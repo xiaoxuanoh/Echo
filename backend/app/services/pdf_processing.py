@@ -17,6 +17,7 @@ class PageInspection:
     page_number: int
     classification: PageKind
     extracted_character_count: int
+    extracted_text: str
 
 
 @dataclass(frozen=True)
@@ -98,6 +99,7 @@ class PdfProcessingService:
                         page_number=page_index + 1,
                         classification=classification,
                         extracted_character_count=character_count,
+                        extracted_text=text,
                     )
                 )
 

@@ -7,10 +7,20 @@ PageClassification = Literal["embedded_text", "requires_ocr"]
 PdfClassification = Literal["text", "scanned", "mixed"]
 
 
-class PdfPageResult(BaseModel):
+class BookPageResult(BaseModel):
+    page_id: str
     page_number: int
-    classification: PageClassification
+    original_filename: str | None
+    original_image_path: str | None
+    processed_image_path: str | None
+    extraction_method: Literal["pending", "embedded_text", "ocr"]
     extracted_character_count: int
+    rotation_degrees: Literal[0, 90, 180, 270]
+    processing_status: Literal["pending", "completed"]
+
+
+class PdfPageResult(BookPageResult):
+    classification: PageClassification
 
 
 class PdfUploadResult(BaseModel):
@@ -23,11 +33,9 @@ class PdfUploadResult(BaseModel):
     processing_status: Literal["uploaded"] = "uploaded"
 
 
-class ImagePageResult(BaseModel):
-    page_number: int
+class ImagePageResult(BookPageResult):
     original_filename: str
     normalized_filename: str
-    rotation_degrees: Literal[0, 90, 180, 270]
 
 
 class ImageUploadResult(BaseModel):

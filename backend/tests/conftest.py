@@ -20,7 +20,7 @@ def client(storage_path: Path) -> Iterator[TestClient]:
         max_pdf_size_mb=1,
         max_image_size_mb=1,
         max_image_upload_count=3,
-        max_image_pixels=10_000,
+        max_image_pixels=10_000_000,
     )
     with TestClient(create_app(settings)) as test_client:
         yield test_client

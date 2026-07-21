@@ -75,3 +75,62 @@ Continue testing representative real book files as they become available.
 - Initial milestone commit: `0df4594` (`Build Echo milestone 1 upload foundation`)
 - Pushed to `origin/main` on GitHub.
 - No additional branch or pull request was created.
+
+## 2026-07-21 — Milestone 2 shared ordered pages
+
+### Task
+
+Create local book/page metadata, render scanned PDF pages, and normalize PDFs
+and page photos into one ordered page representation.
+
+### Implementation summary
+
+- Added typed local `BookRecord` and `BookPageRecord` models.
+- Added atomic, human-readable `book.json` metadata writing inside each UUID
+  book directory.
+- Saved extracted text for embedded-text PDF pages.
+- Rendered PDF pages requiring future OCR into ordered normalized PNG files.
+- Represented PDF and photo pages with the same IDs, order, paths, extraction
+  method, rotation, status, and timestamps.
+- Expanded upload responses and the result card to show every prepared page in
+  ordinary user-facing language.
+- Added no dependencies and did not introduce OCR, audio, Supabase, or workers.
+
+### Files changed
+
+- Backend: local book models, metadata service, upload routes, response schemas,
+  rendered-image normalization, and upload tests.
+- Frontend: upload-result types, prepared-page result UI, and component test.
+- Documentation: `README.md`, `AGENTS.md`, `lesson.md`, architecture, decisions,
+  roadmap, and this log.
+
+### Tests run and results
+
+- Backend pytest: 11 passed; the existing TestClient dependency warning remains.
+- Backend Ruff: passed.
+- Frontend Vitest: 5 passed.
+- Frontend ESLint: passed.
+- Frontend production build and strict TypeScript check: passed after rerunning
+  outside the restricted sandbox so Turbopack could bind its internal port.
+- Live `GET /health` on the existing backend at port 8001: passed with the
+  expected development response.
+
+Automated mixed-PDF coverage confirms embedded text is saved, scanned pages are
+rendered in order, and `book.json` contains the shared page records. Automated
+photo coverage confirms confirmed order, rotation, source paths, normalized
+paths, and pending OCR status.
+
+### Known issues
+
+- Real Traditional Chinese digital, scanned, and mixed PDFs are still not
+  available for manual verification.
+- Multiple real photos and browser drag reordering have not been manually
+  rechecked during this milestone.
+- Local JSON is development persistence, not a concurrent or long-term store.
+- No retrieval/library endpoint is included yet.
+
+### Next recommended step
+
+Plan milestone 3 around one representative Traditional Chinese image: define a
+replaceable OCR service, evaluate PaddleOCR and its Python/runtime compatibility,
+and measure output quality before attempting whole-book OCR.

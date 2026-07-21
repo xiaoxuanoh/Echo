@@ -1,4 +1,4 @@
-# Echo milestone 1 lesson
+# Echo milestones 1 and 2 lesson
 
 This lesson explains what we built, why it is structured this way, and what you
 can learn from it as a beginner.
@@ -244,11 +244,46 @@ completed successfully. This is a useful example of configuration debugging:
 the image-processing code was working, but the request could not cross the
 frontend/backend boundary.
 
-## 12. What comes next
+## 12. What milestone 2 added
 
-Milestone 2 should create the shared ordered page model and render scanned PDF
-pages into normalized images. It should not add OCR, audio, authentication, or
-cloud storage yet.
+Every upload now creates a small, readable local record:
+
+```text
+backend/data/<book-id>/book.json
+```
+
+The book record contains an ordered list of page records. Every page has the
+same core fields regardless of whether it came from a PDF or a photograph. This
+includes its page number, generated ID, source and processing paths, text method,
+rotation, status, and timestamps.
+
+For a mixed PDF, the result can look conceptually like this:
+
+```text
+Page 1 → embedded text → text saved in book.json
+Page 2 → scanned page  → pages/page-0002.png → waiting for OCR
+```
+
+For page photos:
+
+```text
+Confirmed photo order → normalized PNGs → the same ordered page records
+```
+
+The JSON stores relative paths such as `pages/page-0002.png`, rather than a full
+path tied to one computer. A temporary file is written first and then renamed
+to `book.json`, which reduces the chance of an interrupted write leaving broken
+metadata.
+
+The page status `pending` means text reading is still future work. It does not
+mean the upload failed. Embedded-text pages are `completed` because their text
+has already been saved.
+
+## 13. What comes next
+
+Milestone 3 should add a replaceable OCR service and evaluate one real
+Traditional Chinese page before attempting a whole book. It should not add
+audio, authentication, cloud storage, or whole-book OCR yet.
 
 The central idea to preserve is:
 

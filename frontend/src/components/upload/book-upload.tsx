@@ -183,6 +183,27 @@ function UploadResultCard({ result }: { result: UploadResult }) {
           </div>
         )}
       </dl>
+      <div className="mt-6 border-t border-[#cbded1] pt-5">
+        <h3 className="font-semibold">Prepared pages</h3>
+        <ol className="mt-3 space-y-2">
+          {result.pages.map((page) => (
+            <li
+              key={page.page_id}
+              className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white px-4 py-3 text-sm"
+            >
+              <span className="font-medium">
+                Page {page.page_number}
+                {page.original_filename ? ` · ${page.original_filename}` : ""}
+              </span>
+              <span className="text-muted">
+                {page.extraction_method === "embedded_text"
+                  ? "Page text saved"
+                  : "Image ready for text reading"}
+              </span>
+            </li>
+          ))}
+        </ol>
+      </div>
       <p className="mt-5 text-sm text-muted">Temporary book ID: {result.book_id}</p>
     </section>
   );

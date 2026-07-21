@@ -1,4 +1,5 @@
 import io
+import json
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -43,7 +44,21 @@ def test_uploads_and_classifies_pdf(client: TestClient, storage_path: Path) -> N
         "embedded_text",
         "requires_ocr",
     ]
-    assert (storage_path / result["book_id"] / "source.pdf").exists()
+    book_directory = storage_path / result["book_id"]
+    assert (book_directory / "source.pdf").exists()
+    assert not (book_directory / "pages" / "page-0001.png").exists()
+    assert (book_directory / "pages" / "page-0002.png").exists()
+
+    metadata = json.loads((book_directory / "book.json").read_text())
+    assert metadata["source_type"] == "pdf"
+    assert metadata["source_storage_path"] == "source.pdf"
+    assert [page["page_number"] for page in metadata["pages"]] == [1, 2]
+    assert metadata["pages"][0]["extraction_method"] == "embedded_text"
+    assert "selectable embedded text" in metadata["pages"][0]["extracted_text"]
+    assert metadata["pages"][0]["processing_status"] == "completed"
+    assert metadata["pages"][1]["extraction_method"] == "ocr"
+    assert metadata["pages"][1]["processed_image_path"] == "pages/page-0002.png"
+    assert metadata["pages"][1]["processing_status"] == "pending"
 
 
 def test_rejects_invalid_and_oversized_pdf(client: TestClient) -> None:
@@ -89,6 +104,19 @@ def test_preserves_image_order_and_applies_rotation(
     with Image.open(normalized_path) as normalized:
         assert normalized.size == (20, 12)
 
+    metadata_path = storage_path / result["book_id"] / "book.json"
+    metadata = json.loads(metadata_path.read_text())
+    assert metadata["source_type"] == "images"
+    assert [page["original_filename"] for page in metadata["pages"]] == [
+        "second.png",
+        "first.jpg",
+    ]
+    assert [page["page_number"] for page in metadata["pages"]] == [1, 2]
+    assert all(page["extraction_method"] == "ocr" for page in metadata["pages"])
+    assert all(page["processing_status"] == "pending" for page in metadata["pages"])
+    assert metadata["pages"][0]["original_image_path"].startswith("originals/")
+    assert metadata["pages"][0]["processed_image_path"] == "pages/page-0001.png"
+
 
 def test_corrects_exif_orientation_before_user_rotation(tmp_path: Path) -> None:
     from app.services.image_processing import ImageProcessingService
@@ -127,7 +155,7 @@ def test_rejects_invalid_images_rotations_and_count(client: TestClient) -> None:
     too_many_pixels = client.post(
         "/api/books/images",
         files=[
-            ("files", ("wide.png", image_bytes((101, 100)), "image/png")),
+            ("files", ("wide.png", image_bytes((4001, 2500)), "image/png")),
         ],
         data={"rotations": "[0]"},
     )

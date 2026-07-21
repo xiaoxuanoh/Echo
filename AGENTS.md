@@ -14,7 +14,7 @@ Before making changes:
 While working:
 
 - Keep work limited to the current request and milestone.
-- Treat milestone 1 as complete. Do not start milestone 2 or later work without
+- Treat milestones 1 and 2 as complete. Do not start milestone 3 or later work without
   an explicit user request and an approved micro-plan.
 - Preserve Echo's audiobook-conversion scope.
 - Do not add postponed AI or learning features.

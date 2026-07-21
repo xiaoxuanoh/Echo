@@ -82,3 +82,24 @@ class ImageProcessingService:
                 "image_processing_failed",
                 "Echo could not prepare one of the page images.",
             ) from error
+
+    def save_rendered_page(self, image: Image.Image, destination: Path) -> None:
+        """Save a PDF-rendered page in the same stable format as page photos."""
+
+        if image.width * image.height > self.max_pixels:
+            raise EchoError(
+                "image_too_large",
+                "A rendered PDF page has too many pixels to process safely.",
+                status_code=413,
+                details={"max_pixels": self.max_pixels},
+            )
+        try:
+            normalized = image
+            if normalized.mode not in {"RGB", "L"}:
+                normalized = normalized.convert("RGB")
+            normalized.save(destination, format="PNG", optimize=True)
+        except OSError as error:
+            raise EchoError(
+                "image_processing_failed",
+                "Echo could not prepare one of the PDF pages.",
+            ) from error

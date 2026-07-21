@@ -7,7 +7,7 @@ from app.core.errors import EchoError
 
 
 class LocalStorageService:
-    """Stores milestone-one uploads in UUID-scoped local directories."""
+    """Stores prototype uploads in UUID-scoped local directories."""
 
     chunk_size = 1024 * 1024
 

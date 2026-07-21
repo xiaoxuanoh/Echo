@@ -1,0 +1,61 @@
+from datetime import UTC, datetime
+from typing import Literal
+from uuid import UUID
+
+from pydantic import BaseModel, Field
+
+
+BookSourceType = Literal["pdf", "images"]
+BookStatus = Literal[
+    "uploaded",
+    "normalizing_pages",
+    "inspecting",
+    "extracting_text",
+    "running_ocr",
+    "generating_audio",
+    "ready",
+    "failed",
+]
+ExtractionMethod = Literal["pending", "embedded_text", "ocr"]
+PageStatus = Literal[
+    "pending",
+    "normalizing",
+    "extracting",
+    "running_ocr",
+    "completed",
+    "failed",
+]
+
+
+def utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+class BookPageRecord(BaseModel):
+    id: UUID
+    book_id: UUID
+    page_number: int = Field(ge=1)
+    original_filename: str | None = None
+    original_image_path: str | None = None
+    processed_image_path: str | None = None
+    extraction_method: ExtractionMethod
+    extracted_text: str = ""
+    rotation_degrees: Literal[0, 90, 180, 270] = 0
+    processing_status: PageStatus
+    created_at: datetime
+    updated_at: datetime
+
+
+class BookRecord(BaseModel):
+    id: UUID
+    user_id: UUID | None = None
+    title: str
+    original_filename: str | None = None
+    source_type: BookSourceType
+    source_storage_path: str | None = None
+    total_pages: int = Field(ge=1)
+    status: BookStatus
+    error_message: str | None = None
+    pages: list[BookPageRecord]
+    created_at: datetime
+    updated_at: datetime

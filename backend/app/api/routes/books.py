@@ -1,17 +1,20 @@
 import json
 import shutil
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
 
 from app.core.errors import EchoError
+from app.models.books import BookPageRecord, BookRecord
 from app.schemas.books import (
     ImagePageResult,
     ImageUploadResult,
     PdfPageResult,
     PdfUploadResult,
 )
+from app.services.book_metadata import LocalBookMetadataService
 from app.services.image_processing import ImageProcessingService
 from app.services.pdf_processing import PdfProcessingService
 from app.services.storage import LocalStorageService
@@ -40,6 +43,66 @@ async def upload_pdf(
         await storage.save_upload(file, source_path, settings.max_pdf_size_bytes)
         pdf_service = PdfProcessingService(settings.pdf_text_min_characters)
         inspection = pdf_service.classify_pdf(source_path)
+        image_service = ImageProcessingService(settings.max_image_pixels)
+        normalized_directory = book_directory / "pages"
+        normalized_directory.mkdir()
+        now = datetime.now(UTC)
+        page_records: list[BookPageRecord] = []
+
+        for page in inspection.pages:
+            processed_image_path: str | None = None
+            extracted_text = ""
+            if page.classification == "embedded_text":
+                extracted_text = page.extracted_text
+            else:
+                normalized_filename = f"page-{page.page_number:04d}.png"
+                rendered_page = pdf_service.render_page(
+                    source_path, page.page_number - 1
+                )
+                try:
+                    image_service.save_rendered_page(
+                        rendered_page,
+                        normalized_directory / normalized_filename,
+                    )
+                finally:
+                    rendered_page.close()
+                processed_image_path = f"pages/{normalized_filename}"
+
+            page_records.append(
+                BookPageRecord(
+                    id=uuid4(),
+                    book_id=book_id,
+                    page_number=page.page_number,
+                    extraction_method=(
+                        "embedded_text"
+                        if page.classification == "embedded_text"
+                        else "ocr"
+                    ),
+                    extracted_text=extracted_text,
+                    processed_image_path=processed_image_path,
+                    processing_status=(
+                        "completed"
+                        if page.classification == "embedded_text"
+                        else "pending"
+                    ),
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+
+        metadata = BookRecord(
+            id=book_id,
+            title=Path(file.filename or "book.pdf").stem or "Untitled book",
+            original_filename=file.filename or "book.pdf",
+            source_type="pdf",
+            source_storage_path="source.pdf",
+            total_pages=inspection.total_pages,
+            status="uploaded",
+            pages=page_records,
+            created_at=now,
+            updated_at=now,
+        )
+        LocalBookMetadataService().save(book_directory, metadata)
     except Exception:
         shutil.rmtree(book_directory, ignore_errors=True)
         raise
@@ -51,11 +114,18 @@ async def upload_pdf(
         classification=inspection.classification,
         pages=[
             PdfPageResult(
+                page_id=str(page_record.id),
                 page_number=page.page_number,
                 classification=page.classification,
                 extracted_character_count=page.extracted_character_count,
+                original_filename=None,
+                original_image_path=None,
+                processed_image_path=page_record.processed_image_path,
+                extraction_method=page_record.extraction_method,
+                rotation_degrees=0,
+                processing_status=page_record.processing_status,
             )
-            for page in inspection.pages
+            for page, page_record in zip(inspection.pages, page_records, strict=True)
         ],
     )
 
@@ -105,6 +175,8 @@ async def upload_images(
     normalized_directory.mkdir()
     image_service = ImageProcessingService(settings.max_image_pixels)
     page_results: list[ImagePageResult] = []
+    page_records: list[BookPageRecord] = []
+    now = datetime.now(UTC)
 
     try:
         for index, (upload, rotation) in enumerate(
@@ -126,18 +198,54 @@ async def upload_images(
                 normalized_directory / normalized_filename,
                 rotation,
             )
+            page_id = uuid4()
             page_results.append(
                 ImagePageResult(
+                    page_id=str(page_id),
                     page_number=index,
                     original_filename=original_filename,
                     normalized_filename=normalized_filename,
                     rotation_degrees=rotation,
+                    original_image_path=f"originals/{source_path.name}",
+                    processed_image_path=f"pages/{normalized_filename}",
+                    extraction_method="ocr",
+                    extracted_character_count=0,
+                    processing_status="pending",
                 )
             )
+            page_records.append(
+                BookPageRecord(
+                    id=page_id,
+                    book_id=book_id,
+                    page_number=index,
+                    original_filename=original_filename,
+                    original_image_path=f"originals/{source_path.name}",
+                    processed_image_path=f"pages/{normalized_filename}",
+                    extraction_method="ocr",
+                    rotation_degrees=rotation,
+                    processing_status="pending",
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+
+        metadata = BookRecord(
+            id=book_id,
+            title=(
+                Path(page_records[0].original_filename or "Page photo book").stem
+                or "Page photo book"
+            ),
+            source_type="images",
+            total_pages=len(page_records),
+            status="uploaded",
+            pages=page_records,
+            created_at=now,
+            updated_at=now,
+        )
+        LocalBookMetadataService().save(book_directory, metadata)
     except Exception:
         shutil.rmtree(book_directory, ignore_errors=True)
         raise
-
 
     return ImageUploadResult(
         book_id=str(book_id),

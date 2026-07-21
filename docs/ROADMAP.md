@@ -2,8 +2,8 @@
 
 ## Current position
 
-Milestone 1 is complete and manually verified with one real JPEG page photo.
-Milestone 2 is the next planned milestone and has not started.
+Milestones 1 and 2 are complete. The upload workflow was manually verified with
+one real JPEG page photo during milestone 1. Milestone 3 is next.
 
 ## Milestone 1 — Local upload foundation (complete)
 
@@ -15,13 +15,15 @@ Milestone 2 is the next planned milestone and has not started.
 
 No OCR, audio, Supabase, authentication, or deployment.
 
-## Milestone 2 — Shared ordered pages (next)
+## Milestone 2 — Shared ordered pages (complete)
 
 - local book and page metadata
 - render scanned PDF pages
 - normalize both source types into one page representation
 
-## Milestone 3 — First Traditional Chinese OCR page
+No OCR is run in this milestone.
+
+## Milestone 3 — First Traditional Chinese OCR page (next)
 
 - replaceable PaddleOCR service
 - one-page quality evaluation

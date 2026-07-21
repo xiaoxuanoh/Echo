@@ -9,7 +9,7 @@ Browser (Next.js)
   → multipart upload
 FastAPI
   → validation and source-specific preparation
-Temporary local storage (milestone 1)
+Temporary local storage (milestones 1–2)
 ```
 
 The frontend explains the workflow, gathers a confirmed page order, and shows
@@ -34,6 +34,7 @@ content remains in Server Components.
 - Inspect every PDF page rather than inferring the whole document from page one.
 - Correct EXIF orientation before applying the confirmed user rotation.
 - Return stable typed responses and structured errors.
+- Save one portable local book record with a shared ordered page list.
 
 Routes coordinate requests; PDF, image, validation, and storage logic live in
 independently testable services.
@@ -52,9 +53,11 @@ PDF                         Page photographs
           text → segments → audio
 ```
 
-Milestone 1 stops before creating persistent `book_pages` records. It already
-preserves the order and processing metadata needed for that model in milestone
-2.
+Milestone 2 creates local `BookRecord` and `BookPageRecord` models. PDF and
+photo uploads now produce the same ordered page fields: page ID and number,
+source paths, normalized path, extraction method, extracted text, rotation,
+status, and timestamps. The records are stored together in `book.json` until a
+database is introduced.
 
 ## PDF processing flow
 
@@ -63,9 +66,11 @@ preserves the order and processing metadata needed for that model in milestone
 3. Reject unreadable, password-protected, or zero-page documents.
 4. Extract text from every page through `PdfProcessingService`.
 5. Count non-whitespace characters per page.
-6. Mark pages with at least `PDF_TEXT_MIN_CHARACTERS` as `embedded_text`; mark
-   the rest as `requires_ocr`.
-7. Return `text`, `scanned`, or `mixed` from the full set of page results.
+6. Save text for pages with at least `PDF_TEXT_MIN_CHARACTERS` and mark them
+   `embedded_text`.
+7. Render every `requires_ocr` page to an ordered normalized PNG.
+8. Save both page kinds in one ordered page list and return `text`, `scanned`,
+   or `mixed` from the full set.
 
 `PdfProcessingService` owns `validate_pdf()`, `count_pages()`,
 `extract_page_text()`, `render_page()`, and `classify_pdf()`. No PDF-library calls
@@ -100,17 +105,23 @@ voice.
 
 ## Storage model
 
-Milestone 1 uses:
+Milestone 2 uses:
 
 ```text
 backend/data/<book-id>/
+├── book.json                  # book plus ordered page metadata
 ├── source.pdf                 # PDF flow
-└── originals/ + pages/       # image flow
+├── originals/                 # original photo uploads, image flow
+└── pages/                     # normalized photos or rendered PDF pages
 ```
 
-The complete model will use `books`, `book_pages`, `audio_segments`, and
-`reading_progress`. Supabase Postgres and Storage are postponed until milestone
-8. User ownership and Row Level Security will be designed with authentication.
+Embedded-text PDF pages can have no processing image. Photo pages and scanned
+PDF pages have a normalized PNG path and are marked as waiting for future OCR.
+All stored paths are relative to the UUID book directory.
+
+The complete model will add `audio_segments` and `reading_progress`, then move
+the local book/page records to Supabase in milestone 8. User ownership and Row
+Level Security will be designed with authentication.
 
 ## Planned deployment
 

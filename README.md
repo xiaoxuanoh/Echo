@@ -9,21 +9,24 @@ ordered page model before text recognition and speech generation.
 
 ## Current milestone
 
-Milestone 1 is complete and provides a local upload foundation:
+Milestone 2 is complete. Echo now has a local shared ordered-page foundation:
 
 - a calm landing page and `/books/new` workflow;
 - PDF upload, validation, page counting, and all-page classification;
 - multiple JPG/PNG page uploads with preview, ordering, rotation, and removal;
 - EXIF correction followed by the user's chosen rotation;
 - normalized images and original uploads in temporary UUID directories;
+- one `book.json` metadata record for each locally prepared book;
+- saved embedded PDF text for each qualifying page;
+- rendered PNG processing copies for scanned PDF pages;
+- the same ordered page fields for PDFs and page photos;
 - structured errors, upload safeguards, and automated tests.
 
 Real text recognition, Cantonese audio, accounts, Supabase, and deployment are
-not part of this milestone.
+not part of the completed milestones.
 
-The next planned step is milestone 2: create the shared ordered-page model and
-render scanned PDF pages into the same normalized representation used by page
-photos. Milestone 2 has not started yet.
+The next planned step is milestone 3: introduce a replaceable OCR service and
+evaluate one representative Traditional Chinese page. It has not started yet.
 
 ## Core user flow
 
@@ -93,7 +96,7 @@ Copy the provided example files rather than editing them with secrets:
 - `backend/.env.example` contains local paths, classification settings, future
   provider placeholders, and upload safeguards.
 
-Milestone 1 defaults:
+Local development defaults:
 
 ```dotenv
 PDF_TEXT_MIN_CHARACTERS=20
@@ -106,7 +109,8 @@ LOCAL_STORAGE_PATH=./data
 
 These are development safeguards, not permanent product limits. If the backend
 is started from `backend/`, uploads remain in `backend/data/<book-id>/` so they
-can be inspected. This storage is temporary and not suitable for long-term use.
+can be inspected. Each directory contains a human-readable `book.json`. This
+storage is temporary and not suitable for long-term use.
 
 ## Testing commands
 
@@ -138,11 +142,11 @@ curl --fail http://localhost:8001/health
 
 - PDF classification is a practical character-count heuristic, not a guarantee
   that embedded text is complete or in natural reading order.
-- No OCR is run. Pages without enough embedded text are only marked as needing
-  text recognition later.
+- No OCR is run. Pages without enough embedded text are rendered and marked as
+  waiting for text reading later.
 - No audio is generated.
-- Local upload metadata is returned to the browser but is not stored in a
-  database.
+- Local book/page metadata is saved in JSON, not a database, and there is not
+  yet a book-library retrieval API.
 - Successfully processed uploads are not removed automatically.
 - JPG, JPEG, and PNG are supported; HEIC is postponed.
 - A real background worker is postponed until processing volume requires one.

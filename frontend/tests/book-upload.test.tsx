@@ -30,7 +30,32 @@ describe("page photo workflow", () => {
           source_type: "images",
           total_pages: 2,
           ordered_image_filenames: ["page-two.png", "page-one.png"],
-          pages: [],
+          pages: [
+            {
+              page_id: "page-id-1",
+              page_number: 1,
+              original_filename: "page-two.png",
+              original_image_path: "originals/original-0001.png",
+              processed_image_path: "pages/page-0001.png",
+              extraction_method: "ocr",
+              extracted_character_count: 0,
+              normalized_filename: "page-0001.png",
+              rotation_degrees: 0,
+              processing_status: "pending",
+            },
+            {
+              page_id: "page-id-2",
+              page_number: 2,
+              original_filename: "page-one.png",
+              original_image_path: "originals/original-0002.png",
+              processed_image_path: "pages/page-0002.png",
+              extraction_method: "ocr",
+              extracted_character_count: 0,
+              normalized_filename: "page-0002.png",
+              rotation_degrees: 90,
+              processing_status: "pending",
+            },
+          ],
           processing_status: "uploaded",
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
@@ -59,5 +84,7 @@ describe("page photo workflow", () => {
     expect(filenames).toEqual(["page-two.png", "page-one.png"]);
     expect(body.get("rotations")).toBe("[0,90]");
     expect(await screen.findByText("Your book pages are prepared")).toBeVisible();
+    expect(screen.getByText("Page 1 · page-two.png")).toBeVisible();
+    expect(screen.getAllByText("Image ready for text reading")).toHaveLength(2);
   });
 });

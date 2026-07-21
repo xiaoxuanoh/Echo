@@ -39,6 +39,23 @@ characters is `embedded_text`; otherwise it is `requires_ocr`. The default is
 All embedded-text pages produce a `text` PDF, all OCR-required pages produce a
 `scanned` PDF, and a combination produces `mixed`. Every page is inspected.
 
+## JSON for milestone-two local metadata
+
+**Decision:** Save one `book.json` inside each UUID book directory. It contains
+the book record and its ordered page records. File paths inside it are relative
+to that directory.
+
+**Reason:** JSON is inspectable while learning, requires no database service,
+and is sufficient for the local prototype. Writing through a temporary file
+reduces the chance of leaving half-written metadata. This is intentionally not
+a long-term concurrent database and will be replaced by Supabase in milestone
+8.
+
+Embedded-text PDF pages store their text directly and need no rendered image.
+PDF pages that require OCR are rendered to PNG, while uploaded photos retain
+both their generated original path and normalized PNG path. Both sources use
+the same `BookPageRecord` shape.
+
 ## Pillow now, OpenCV later
 
 **Decision:** Use Pillow for decoding, EXIF orientation, right-angle rotation,
