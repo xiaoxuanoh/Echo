@@ -1,0 +1,32 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Frontend
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/coverage/
+frontend/*.tsbuildinfo
+
+# Python
+backend/.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Temporary uploads and generated media
+backend/data/*
+!backend/data/.gitkeep
+uploads/
+generated/
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/
+*.swp
