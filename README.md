@@ -51,7 +51,7 @@ Upload a PDF or page photos
 
 - Node.js 20.9 or newer
 - npm
-- Python 3.11 or newer (milestone 1 was tested with Python 3.13.5)
+- Python 3.11 or newer (milestones 1 and 2 were tested with Python 3.13.5)
 
 ## Backend setup
 

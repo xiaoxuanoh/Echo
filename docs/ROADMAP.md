@@ -2,8 +2,9 @@
 
 ## Current position
 
-Milestones 1 and 2 are complete. The upload workflow was manually verified with
-one real JPEG page photo during milestone 1. Milestone 3 is next.
+Milestones 1 and 2 are complete. A real JPEG page photo was manually verified
+through both the upload foundation and shared-page metadata flow. Milestone 3
+is next.
 
 ## Milestone 1 — Local upload foundation (complete)
 

@@ -83,8 +83,8 @@ vendors should not leak into page or playback code.
 
 ## Supabase is postponed
 
-**Decision:** Milestone 1 has no Supabase runtime package, schema, CLI setup, or
-cloud dependency.
+**Decision:** Milestones 1 and 2 have no Supabase runtime package, schema, CLI
+setup, or cloud dependency.
 
 **Reason:** Temporary local storage is enough to prove both upload paths. Auth,
 Postgres, Storage, and ownership-based Row Level Security will arrive together

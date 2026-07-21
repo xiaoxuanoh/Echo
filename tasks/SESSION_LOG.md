@@ -114,6 +114,10 @@ and page photos into one ordered page representation.
   outside the restricted sandbox so Turbopack could bind its internal port.
 - Live `GET /health` on the existing backend at port 8001: passed with the
   expected development response.
+- Manual browser verification: one real JPEG page was uploaded with a 270°
+  rotation. The result displayed the expected ordered-page information, and
+  its UUID directory contained `book.json`, the original JPEG, and normalized
+  PNG with matching metadata.
 
 Automated mixed-PDF coverage confirms embedded text is saved, scanned pages are
 rendered in order, and `book.json` contains the shared page records. Automated
@@ -134,3 +138,10 @@ paths, and pending OCR status.
 Plan milestone 3 around one representative Traditional Chinese image: define a
 replaceable OCR service, evaluate PaddleOCR and its Python/runtime compatibility,
 and measure output quality before attempting whole-book OCR.
+
+### Publication
+
+- Milestone 2 commit: `391a53a` (`Build Echo milestone 2 shared page foundation`)
+- Pushed to `origin/main` on GitHub.
+- Local `main` and `origin/main` matched after the push.
+- No additional branch or pull request was created.
