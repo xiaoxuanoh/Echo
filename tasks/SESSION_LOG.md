@@ -16,6 +16,8 @@ Create the Echo monorepo and implement the first local PDF/image upload workflow
   environment examples, documentation, and tests.
 - Added `lesson.md`, a beginner-friendly explanation of the milestone's
   full-stack flow, architecture, validation, storage, types, tests, and commands.
+- Configured Echo to use frontend port 3001 and backend port 8001 so it can run
+  alongside another local project.
 
 ### Files changed
 
@@ -45,6 +47,8 @@ request was created.
   outside the restricted sandbox, where Turbopack could bind its internal port.
 - Live backend `GET /health`: HTTP 200 with the expected JSON response.
 - Live frontend `/` and `/books/new`: both returned HTTP 200.
+- Manual browser verification: one real JPEG book-page photo was previewed,
+  rotated, uploaded, normalized, and returned with a temporary book ID.
 - npm production dependency audit: two moderate findings in Next.js's bundled
   PostCSS; npm's forced proposal would downgrade Next.js to 9.3.3 and was not
   applied.
@@ -55,12 +59,19 @@ request was created.
   been manually verified.
 - The current FastAPI/Starlette TestClient emits an upstream warning that its
   `httpx` bridge is deprecated.
-- The UI was exercised by component tests and HTTP route checks but was not
-  manually inspected in a graphical browser during this session.
+- Multiple real page photos, browser drag reordering, and real-world PDF uploads
+  have not yet been manually verified end to end.
 - Next.js 16.2.10 currently bundles a PostCSS version flagged by npm for a
   moderate XSS advisory. No non-breaking npm fix is currently offered.
 
 ### Next recommended step
 
-Finish the milestone verification, then manually try representative book files
-before beginning milestone 2.
+Plan milestone 2: create local book/page metadata, render scanned PDF pages, and
+normalize both PDF and image sources into one ordered page representation.
+Continue testing representative real book files as they become available.
+
+### Publication
+
+- Initial milestone commit: `0df4594` (`Build Echo milestone 1 upload foundation`)
+- Pushed to `origin/main` on GitHub.
+- No additional branch or pull request was created.

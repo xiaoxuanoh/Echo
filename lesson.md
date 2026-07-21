@@ -141,6 +141,29 @@ The repository contains `.env.example` files with safe placeholders. Actual
 Supabase and Azure variables are only placeholders for future milestones. No
 cloud account is required now.
 
+Echo currently uses a project-specific local port pair so it can run beside
+another web project:
+
+```text
+Frontend: http://localhost:3001
+Backend:  http://localhost:8001
+```
+
+The matching values are:
+
+```dotenv
+# frontend/.env.local
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8001
+
+# backend/.env
+FRONTEND_ORIGIN=http://localhost:3001
+```
+
+`NEXT_PUBLIC_API_BASE_URL` tells the browser where to send an upload.
+`FRONTEND_ORIGIN` tells FastAPI which browser origin may call it. If either value
+is stale, the browser can show `Failed to fetch` even when both servers appear
+to be running. Restart both development servers after changing these files.
+
 ## 8. Why types and schemas matter
 
 TypeScript types describe the result the frontend expects. Pydantic models
@@ -184,27 +207,27 @@ Start the backend in one terminal:
 ```bash
 cd backend
 source .venv/bin/activate
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8001
 ```
 
 Start the frontend in another terminal:
 
 ```bash
 cd frontend
-npm run dev
+npm run dev -- --port 3001
 ```
 
 Then open:
 
 ```text
-http://localhost:3000/books/new
+http://localhost:3001/books/new
 ```
 
 ## 11. Useful debugging sequence
 
 If an upload fails, check the system one layer at a time:
 
-1. Visit `http://localhost:8000/health` to confirm the backend is running.
+1. Visit `http://localhost:8001/health` to confirm the backend is running.
 2. Check the browser error message.
 3. Look at the FastAPI terminal output.
 4. Confirm `NEXT_PUBLIC_API_BASE_URL` points to the backend.
@@ -213,6 +236,13 @@ If an upload fails, check the system one layer at a time:
 7. Run the relevant automated tests before changing code.
 
 This approach narrows the problem instead of guessing across the entire stack.
+
+During milestone 1 verification, a real JPEG page initially showed `Failed to
+fetch` because the frontend and backend ports/origins did not match. After both
+environment files were aligned and the servers restarted, the same page upload
+completed successfully. This is a useful example of configuration debugging:
+the image-processing code was working, but the request could not cross the
+frontend/backend boundary.
 
 ## 12. What comes next
 

@@ -1,6 +1,11 @@
 # Echo roadmap
 
-## Milestone 1 — Local upload foundation
+## Current position
+
+Milestone 1 is complete and manually verified with one real JPEG page photo.
+Milestone 2 is the next planned milestone and has not started.
+
+## Milestone 1 — Local upload foundation (complete)
 
 - Next.js and FastAPI local applications
 - PDF and ordered-image upload workflows
@@ -10,7 +15,7 @@
 
 No OCR, audio, Supabase, authentication, or deployment.
 
-## Milestone 2 — Shared ordered pages
+## Milestone 2 — Shared ordered pages (next)
 
 - local book and page metadata
 - render scanned PDF pages

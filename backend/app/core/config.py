@@ -10,7 +10,7 @@ class Settings(BaseSettings):
 
     app_name: str = "Echo"
     app_env: str = "development"
-    frontend_origin: str = "http://localhost:3000"
+    frontend_origin: str = "http://localhost:3001"
     local_storage_path: Path = Path("./data")
     pdf_text_min_characters: int = Field(default=20, ge=1)
     max_pdf_size_mb: int = Field(default=50, ge=1)

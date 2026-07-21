@@ -9,7 +9,7 @@ ordered page model before text recognition and speech generation.
 
 ## Current milestone
 
-Milestone 1 provides a local upload foundation:
+Milestone 1 is complete and provides a local upload foundation:
 
 - a calm landing page and `/books/new` workflow;
 - PDF upload, validation, page counting, and all-page classification;
@@ -20,6 +20,10 @@ Milestone 1 provides a local upload foundation:
 
 Real text recognition, Cantonese audio, accounts, Supabase, and deployment are
 not part of this milestone.
+
+The next planned step is milestone 2: create the shared ordered-page model and
+render scanned PDF pages into the same normalized representation used by page
+photos. Milestone 2 has not started yet.
 
 ## Core user flow
 
@@ -57,11 +61,11 @@ source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -r requirements-dev.txt
 cp .env.example .env
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8001
 ```
 
-The API is available at `http://localhost:8000`; its interactive documentation
-is at `http://localhost:8000/docs`.
+The API is available at `http://localhost:8001`; its interactive documentation
+is at `http://localhost:8001/docs`.
 
 ## Frontend setup
 
@@ -71,10 +75,14 @@ In a second terminal, from the repository root:
 cd frontend
 npm install
 cp .env.example .env.local
-npm run dev
+npm run dev -- --port 3001
 ```
 
-Open `http://localhost:3000/books/new`.
+Open `http://localhost:3001/books/new`.
+
+Echo uses ports 3001 and 8001 so it can run beside another common local project
+using ports 3000 and 8000. The frontend and backend environment values must
+match these addresses, and both servers must be restarted after changing them.
 
 ## Environment variables
 
@@ -123,7 +131,7 @@ ruff check app tests
 Health check while the backend is running:
 
 ```bash
-curl --fail http://localhost:8000/health
+curl --fail http://localhost:8001/health
 ```
 
 ## Current limitations
@@ -139,5 +147,5 @@ curl --fail http://localhost:8000/health
 - JPG, JPEG, and PNG are supported; HEIC is postponed.
 - A real background worker is postponed until processing volume requires one.
 
-See [the architecture](docs/ARCHITECTURE.md), [decisions](docs/DECISIONS.md), and
-[roadmap](docs/ROADMAP.md) for more context.
+See [the beginner lesson](lesson.md), [architecture](docs/ARCHITECTURE.md),
+[decisions](docs/DECISIONS.md), and [roadmap](docs/ROADMAP.md) for more context.
