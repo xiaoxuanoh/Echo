@@ -4,22 +4,38 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, File, Form, Path as ApiPath, Request, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    File,
+    Form,
+    Path as ApiPath,
+    Request,
+    UploadFile,
+    status,
+)
 
 from app.core.errors import EchoError
 from app.models.books import BookPageRecord, BookRecord
 from app.schemas.books import (
+    BookDetailResult,
+    BookPageDetailResult,
+    BookProcessingAccepted,
     ImagePageResult,
     ImageUploadResult,
-    PdfPageResult,
-    PdfUploadResult,
     OcrLineResult,
     PageTextPreviewResult,
+    PdfPageResult,
+    PdfUploadResult,
 )
 from app.services.book_metadata import LocalBookMetadataService
+from app.services.book_processing import (
+    BookTextProcessingService,
+    LocalBookJobRegistry,
+)
 from app.services.image_processing import ImageProcessingService
+from app.services.ocr import create_ocr_provider
 from app.services.pdf_processing import PdfProcessingService
-from app.services.ocr import MockOcrProvider, PaddleOcrProvider
 from app.services.storage import LocalStorageService
 
 
@@ -42,6 +58,74 @@ def _page_image_path(book_directory: Path, relative_path: str | None) -> Path:
             status_code=500,
         )
     return page_path
+
+
+def _processing_service(request: Request) -> BookTextProcessingService:
+    settings = request.app.state.settings
+    return BookTextProcessingService(
+        storage_root=settings.local_storage_path,
+        ocr_provider=create_ocr_provider(settings),
+    )
+
+
+def _book_result(
+    book: BookRecord,
+    *,
+    processing_active: bool = False,
+) -> BookDetailResult:
+    return BookDetailResult(
+        id=book.id,
+        title=book.title,
+        original_filename=book.original_filename,
+        source_type=book.source_type,
+        total_pages=book.total_pages,
+        processing_status=book.status,
+        error_message=book.error_message,
+        completed_pages=sum(
+            page.processing_status == "completed" for page in book.pages
+        ),
+        failed_pages=sum(page.processing_status == "failed" for page in book.pages),
+        processing_active=processing_active,
+        pages=[
+            BookPageDetailResult(
+                id=page.id,
+                page_number=page.page_number,
+                original_filename=page.original_filename,
+                extraction_method=page.extraction_method,
+                extracted_text=page.extracted_text,
+                extracted_character_count=len(page.extracted_text),
+                processing_status=page.processing_status,
+                error_message=page.error_message,
+                updated_at=page.updated_at,
+            )
+            for page in sorted(book.pages, key=lambda item: item.page_number)
+        ],
+        created_at=book.created_at,
+        updated_at=book.updated_at,
+    )
+
+
+def _run_book_job(
+    service: BookTextProcessingService,
+    registry: LocalBookJobRegistry,
+    book_id: UUID,
+) -> None:
+    try:
+        service.process_book(book_id)
+    finally:
+        registry.finish(book_id)
+
+
+def _run_page_retry(
+    service: BookTextProcessingService,
+    registry: LocalBookJobRegistry,
+    book_id: UUID,
+    page_number: int,
+) -> None:
+    try:
+        service.retry_page(book_id, page_number)
+    finally:
+        registry.finish(book_id)
 
 
 @router.post(
@@ -68,23 +152,7 @@ def preview_page_text(
         )
 
     image_path = _page_image_path(book_directory, page.processed_image_path)
-    if settings.use_mock_ocr:
-        provider = MockOcrProvider()
-    elif settings.ocr_enabled:
-        provider = PaddleOcrProvider(
-            text_detection_model=settings.ocr_text_detection_model,
-            text_recognition_model=settings.ocr_text_recognition_model,
-            max_image_side=settings.ocr_max_image_side,
-            cache_path=settings.ocr_model_cache_path,
-        )
-    else:
-        raise EchoError(
-            "ocr_disabled",
-            "Page text reading is disabled in this development environment.",
-            status_code=503,
-        )
-
-    result = provider.read_page(image_path)
+    result = create_ocr_provider(settings).read_page(image_path)
     return PageTextPreviewResult(
         book_id=str(book.id),
         page_id=str(page.id),
@@ -331,4 +399,83 @@ async def upload_images(
         total_pages=len(page_results),
         ordered_image_filenames=[page.original_filename for page in page_results],
         pages=page_results,
+    )
+
+
+@router.get("/{book_id}", response_model=BookDetailResult)
+def get_book(request: Request, book_id: UUID) -> BookDetailResult:
+    settings = request.app.state.settings
+    book = LocalBookMetadataService().load(settings.local_storage_path / str(book_id))
+    registry: LocalBookJobRegistry = request.app.state.book_job_registry
+    return _book_result(book, processing_active=registry.is_active(book_id))
+
+
+@router.post(
+    "/{book_id}/process-text",
+    response_model=BookProcessingAccepted,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def process_book_text(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    book_id: UUID,
+) -> BookProcessingAccepted:
+    registry: LocalBookJobRegistry = request.app.state.book_job_registry
+    if not registry.start(book_id):
+        raise EchoError(
+            "book_processing_active",
+            "Echo is already reading this book's page text.",
+            status_code=409,
+        )
+    try:
+        service = _processing_service(request)
+        book = service.prepare_book_job(book_id)
+    except Exception:
+        registry.finish(book_id)
+        raise
+
+    background_tasks.add_task(_run_book_job, service, registry, book_id)
+    return BookProcessingAccepted(
+        book_id=book.id,
+        processing_status=book.status,
+        message="Echo has started reading the page text.",
+    )
+
+
+@router.post(
+    "/{book_id}/pages/{page_number}/retry-text",
+    response_model=BookProcessingAccepted,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def retry_page_text(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    book_id: UUID,
+    page_number: int = ApiPath(ge=1),
+) -> BookProcessingAccepted:
+    registry: LocalBookJobRegistry = request.app.state.book_job_registry
+    if not registry.start(book_id):
+        raise EchoError(
+            "book_processing_active",
+            "Echo is already reading this book's page text.",
+            status_code=409,
+        )
+    try:
+        service = _processing_service(request)
+        book = service.prepare_retry_job(book_id, page_number)
+    except Exception:
+        registry.finish(book_id)
+        raise
+
+    background_tasks.add_task(
+        _run_page_retry,
+        service,
+        registry,
+        book_id,
+        page_number,
+    )
+    return BookProcessingAccepted(
+        book_id=book.id,
+        processing_status=book.status,
+        message=f"Echo is reading page {page_number} again.",
     )

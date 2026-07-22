@@ -9,8 +9,8 @@ ordered page model before text recognition and speech generation.
 
 ## Current milestone
 
-Milestone 3 is complete. Echo now has a local one-page Traditional Chinese text
-evaluation workflow on top of the shared ordered-page foundation:
+Milestone 4 is complete. Echo can now prepare and save the text for every page
+in a temporary local book:
 
 - a calm landing page and `/books/new` workflow;
 - PDF upload, validation, page counting, and all-page classification;
@@ -23,21 +23,26 @@ evaluation workflow on top of the shared ordered-page foundation:
 - the same ordered page fields for PDFs and page photos;
 - replaceable mock and PaddleOCR page-reading providers;
 - a one-page text-preview endpoint that does not alter book metadata;
+- whole-book page-by-page text preparation that saves after every page;
+- a `text_ready` book status that is distinct from audio-ready;
+- a temporary book-detail page with progress, extracted-text review, and retry;
+- safe resume behavior that skips completed pages after an interrupted local job;
 - CPU-friendly PP-OCRv5 mobile models stored in an ignored local cache;
 - structured errors, upload safeguards, and automated tests.
 
-Whole-book text recognition, Cantonese audio, accounts, Supabase, and deployment
-are not part of the completed milestones.
+Audio generation, accounts, Supabase, and deployment are not part of the
+completed milestones.
 
-The next planned step is milestone 4: process all pages that need text reading,
-save their text and statuses, and add retry handling. It has not started yet.
+The next planned step is milestone 5: divide saved text into safe ordered
+segments, create local mock audio, and build the first listening page. It has
+not started yet.
 
 ## Core user flow
 
 ```text
 Upload a PDF or page photos
 → prepare an ordered collection of pages
-→ extract Traditional Chinese text (future milestone)
+→ extract and save Traditional Chinese text
 → create Cantonese audio (future milestone)
 → listen to the book (future milestone)
 ```
@@ -177,25 +182,42 @@ curl --request POST \
 ```
 
 The response includes ordered text lines, confidence values, processing time,
-and the active provider. It deliberately reports `persisted: false`; saving and
-processing every page belongs to milestone 4.
+and the active provider. It deliberately reports `persisted: false`, making it
+useful for isolated OCR evaluation.
+
+## Whole-book text preparation
+
+After uploading, follow the result link to `/books/<book-id>`, then choose
+**Read the page text**. Echo processes unfinished pages in order, saves each page
+before moving on, and shows `Page text ready` when the book reaches the internal
+`text_ready` status.
+
+The local API endpoints are:
+
+```text
+GET  /api/books/<book-id>
+POST /api/books/<book-id>/process-text
+POST /api/books/<book-id>/pages/<page-number>/retry-text
+```
+
+If the backend stops during preparation, restart it and use **Continue preparing
+text**. Completed pages are skipped. A failed page can be retried separately.
 
 ## Current limitations
 
 - PDF classification is a practical character-count heuristic, not a guarantee
   that embedded text is complete or in natural reading order.
-- Real OCR is available only through the one-page preview endpoint. The upload
-  workflow does not automatically run it or save its result yet.
 - PaddleOCR confidence is a model estimate, not proof that the wording or
   reading order is correct.
 - A photographed facing page can introduce stray recognized text. Automatic
   two-page splitting and advanced cropping remain postponed.
 - No audio is generated.
-- Local book/page metadata is saved in JSON, not a database, and there is not
-  yet a book-library retrieval API.
+- Local book/page metadata is saved in JSON, not a database. A temporary
+  book-detail API exists, but there is no book library yet.
 - Successfully processed uploads are not removed automatically.
 - JPG, JPEG, and PNG are supported; HEIC is postponed.
-- A real background worker is postponed until processing volume requires one.
+- FastAPI background tasks are local and non-durable. Restarted work can be
+  resumed, but it is not a production job queue.
 
 See [the beginner lesson](lesson.md), [architecture](docs/ARCHITECTURE.md),
 [decisions](docs/DECISIONS.md), and [roadmap](docs/ROADMAP.md) for more context.

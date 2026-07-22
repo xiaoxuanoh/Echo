@@ -1,4 +1,4 @@
-# Echo milestones 1, 2, and 3 lesson
+# Echo milestones 1 through 4 lesson
 
 This lesson explains what we built, why it is structured this way, and what you
 can learn from it as a beginner.
@@ -307,11 +307,41 @@ No extra Pillow or OpenCV preprocessing was added. The normalized page was good
 enough for a first baseline, and automatically separating the facing page is a
 postponed feature rather than a small contrast adjustment.
 
-## 14. What comes next
+## 14. What milestone 4 added
 
-Milestone 4 should process every page that needs text reading, persist text and
-page statuses, and add retry handling. It should not add audio, authentication,
-cloud storage, or advanced page correction.
+Echo can now prepare the text for a complete temporary book:
+
+```text
+uploaded pages
+→ process unfinished pages in order
+→ save after every page
+→ retry only pages that failed
+→ text_ready
+```
+
+This work belongs in `BookTextProcessingService`, not in an API route. The route
+starts the job; the service decides which page comes next, calls the OCR provider
+when needed, and safely updates `book.json`.
+
+Saving after every page is important because real OCR is slow enough that a
+backend restart could otherwise lose minutes of work. On resume, Echo skips
+pages marked `completed`. The persisted metadata is the durable record; the
+small in-memory job registry only prevents two requests from starting the same
+book at the same time while one backend process is running.
+
+`text_ready` is intentionally different from `ready`. It means every page has
+text, but Echo has not created playable audio yet. Clear status names prevent a
+later audio feature from treating an unfinished audiobook as complete.
+
+The new `/books/<book-id>` page translates these internal states into ordinary
+language, shows page progress and saved text, and offers one-page retry controls.
+If a development server stops mid-job, it offers **Continue preparing text**.
+
+## 15. What comes next
+
+Milestone 5 should split saved page text into safe ordered segments, create mock
+audio, and build the first listening route. It should not add paid Azure speech,
+authentication, cloud storage, or advanced page correction yet.
 
 The central idea to preserve is:
 

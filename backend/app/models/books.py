@@ -12,6 +12,7 @@ BookStatus = Literal[
     "inspecting",
     "extracting_text",
     "running_ocr",
+    "text_ready",
     "generating_audio",
     "ready",
     "failed",
@@ -40,6 +41,7 @@ class BookPageRecord(BaseModel):
     processed_image_path: str | None = None
     extraction_method: ExtractionMethod
     extracted_text: str = ""
+    error_message: str | None = None
     rotation_degrees: Literal[0, 90, 180, 270] = 0
     processing_status: PageStatus
     created_at: datetime

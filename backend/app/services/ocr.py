@@ -5,6 +5,7 @@ from statistics import fmean
 from time import perf_counter
 from typing import Any, Protocol
 
+from app.core.config import Settings
 from app.core.errors import EchoError
 
 
@@ -46,6 +47,17 @@ class MockOcrProvider:
             lines=[line],
             average_confidence=1.0,
             processing_time_seconds=0.0,
+        )
+
+
+class DisabledOcrProvider:
+    """Clear runtime boundary for environments where real OCR is turned off."""
+
+    def read_page(self, image_path: Path) -> OcrResult:
+        raise EchoError(
+            "ocr_disabled",
+            "Page text reading is disabled in this development environment.",
+            status_code=503,
         )
 
 
@@ -151,3 +163,18 @@ class PaddleOcrProvider:
             ),
             processing_time_seconds=perf_counter() - started_at,
         )
+
+
+def create_ocr_provider(settings: Settings) -> OcrProvider:
+    """Choose the configured provider without leaking that choice into routes."""
+
+    if settings.use_mock_ocr:
+        return MockOcrProvider()
+    if not settings.ocr_enabled:
+        return DisabledOcrProvider()
+    return PaddleOcrProvider(
+        text_detection_model=settings.ocr_text_detection_model,
+        text_recognition_model=settings.ocr_text_recognition_model,
+        max_image_side=settings.ocr_max_image_side,
+        cache_path=settings.ocr_model_cache_path,
+    )

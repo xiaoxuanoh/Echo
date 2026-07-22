@@ -45,3 +45,56 @@ export type ImageUploadResult = {
 
 export type UploadResult = PdfUploadResult | ImageUploadResult;
 export type Rotation = 0 | 90 | 180 | 270;
+
+export type BookProcessingStatus =
+  | "uploaded"
+  | "normalizing_pages"
+  | "inspecting"
+  | "extracting_text"
+  | "running_ocr"
+  | "text_ready"
+  | "generating_audio"
+  | "ready"
+  | "failed";
+
+export type PageProcessingStatus =
+  | "pending"
+  | "normalizing"
+  | "extracting"
+  | "running_ocr"
+  | "completed"
+  | "failed";
+
+export type BookPageDetail = {
+  id: string;
+  page_number: number;
+  original_filename: string | null;
+  extraction_method: "pending" | "embedded_text" | "ocr";
+  extracted_text: string;
+  extracted_character_count: number;
+  processing_status: PageProcessingStatus;
+  error_message: string | null;
+  updated_at: string;
+};
+
+export type BookDetail = {
+  id: string;
+  title: string;
+  original_filename: string | null;
+  source_type: "pdf" | "images";
+  total_pages: number;
+  processing_status: BookProcessingStatus;
+  error_message: string | null;
+  completed_pages: number;
+  failed_pages: number;
+  processing_active: boolean;
+  pages: BookPageDetail[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type BookProcessingAccepted = {
+  book_id: string;
+  processing_status: "extracting_text" | "running_ocr";
+  message: string;
+};

@@ -2,9 +2,10 @@
 
 ## Current position
 
-Milestones 1, 2, and 3 are complete. A real Traditional Chinese JPEG page was
+Milestones 1 through 4 are complete. A real Traditional Chinese JPEG page was
 manually verified through upload, shared-page preparation, and one-page
-PaddleOCR evaluation. Milestone 4 is next.
+PaddleOCR evaluation. Whole-book orchestration and retry behavior are covered
+with automated local tests. Milestone 5 is next.
 
 ## Milestone 1 — Local upload foundation (complete)
 
@@ -30,13 +31,15 @@ No OCR is run in this milestone.
 - one-page quality evaluation
 - optional basic preprocessing when evidence supports it
 
-## Milestone 4 — Whole-book text extraction (next)
+## Milestone 4 — Whole-book text extraction (complete)
 
 - process every OCR-required page, including mixed PDFs
 - save text and page statuses
 - retry handling
+- `text_ready` completion status and interrupted-job resume behavior
+- temporary book status and extracted-text review page
 
-## Milestone 5 — Segments and mock listening
+## Milestone 5 — Segments and mock listening (next)
 
 - safe text segmentation
 - mock audio output

@@ -18,6 +18,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import Image from "next/image";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 import { uploadImages, uploadPdf } from "@/lib/api";
@@ -205,6 +206,12 @@ function UploadResultCard({ result }: { result: UploadResult }) {
         </ol>
       </div>
       <p className="mt-5 text-sm text-muted">Temporary book ID: {result.book_id}</p>
+      <Link
+        href={`/books/${result.book_id}`}
+        className="mt-5 inline-flex min-h-12 items-center rounded-xl bg-accent px-6 py-3 font-semibold text-white shadow-sm transition hover:bg-accent-dark"
+      >
+        Continue preparing your book
+      </Link>
     </section>
   );
 }

@@ -1,10 +1,31 @@
+from datetime import datetime
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel
 
 
 PageClassification = Literal["embedded_text", "requires_ocr"]
 PdfClassification = Literal["text", "scanned", "mixed"]
+BookProcessingStatus = Literal[
+    "uploaded",
+    "normalizing_pages",
+    "inspecting",
+    "extracting_text",
+    "running_ocr",
+    "text_ready",
+    "generating_audio",
+    "ready",
+    "failed",
+]
+PageProcessingStatus = Literal[
+    "pending",
+    "normalizing",
+    "extracting",
+    "running_ocr",
+    "completed",
+    "failed",
+]
 
 
 class BookPageResult(BaseModel):
@@ -63,6 +84,40 @@ class PageTextPreviewResult(BaseModel):
     processing_time_seconds: float
     preprocessing: Literal["normalized_page"] = "normalized_page"
     persisted: Literal[False] = False
+
+
+class BookPageDetailResult(BaseModel):
+    id: UUID
+    page_number: int
+    original_filename: str | None
+    extraction_method: Literal["pending", "embedded_text", "ocr"]
+    extracted_text: str
+    extracted_character_count: int
+    processing_status: PageProcessingStatus
+    error_message: str | None
+    updated_at: datetime
+
+
+class BookDetailResult(BaseModel):
+    id: UUID
+    title: str
+    original_filename: str | None
+    source_type: Literal["pdf", "images"]
+    total_pages: int
+    processing_status: BookProcessingStatus
+    error_message: str | None
+    completed_pages: int
+    failed_pages: int
+    processing_active: bool
+    pages: list[BookPageDetailResult]
+    created_at: datetime
+    updated_at: datetime
+
+
+class BookProcessingAccepted(BaseModel):
+    book_id: UUID
+    processing_status: Literal["extracting_text", "running_ocr"]
+    message: str
 
 
 class HealthResult(BaseModel):

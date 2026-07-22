@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from app.api.routes import books, health
 from app.core.config import Settings, get_settings
 from app.core.errors import EchoError
+from app.services.book_processing import LocalBookJobRegistry
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -20,6 +21,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     application = FastAPI(title=active_settings.app_name)
     application.state.settings = active_settings
+    application.state.book_job_registry = LocalBookJobRegistry()
     application.add_middleware(
         CORSMiddleware,
         allow_origins=[active_settings.frontend_origin],

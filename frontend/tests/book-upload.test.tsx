@@ -86,5 +86,8 @@ describe("page photo workflow", () => {
     expect(await screen.findByText("Your book pages are prepared")).toBeVisible();
     expect(screen.getByText("Page 1 · page-two.png")).toBeVisible();
     expect(screen.getAllByText("Image ready for text reading")).toHaveLength(2);
+    expect(
+      screen.getByRole("link", { name: "Continue preparing your book" }),
+    ).toHaveAttribute("href", "/books/temporary-book-id");
   });
 });

@@ -216,3 +216,80 @@ Traditional Chinese page without starting whole-book processing.
 Plan milestone 4 around orchestration that processes every OCR-required page,
 persists each result safely, records page statuses, and supports retrying failed
 pages without redoing completed work.
+
+### Publication
+
+- Milestone 3 commit: `80353d1` (`Build Echo milestone 3 OCR preview`)
+- Pushed to `origin/main` on GitHub.
+- No additional branch or pull request was created.
+
+## 2026-07-22 — Milestone 4 whole-book text preparation
+
+### Task
+
+Process all pages in a temporary book, save text and page-level status, support
+failed-page retry and interrupted-job resume, and use `text_ready` for text
+completion.
+
+### Implementation summary
+
+- Added a `BookTextProcessingService` that works through unfinished pages in
+  order and saves `book.json` after every state transition.
+- Preserved embedded PDF text and sent only OCR pages through the configured
+  provider.
+- Added `text_ready` as a distinct state before audio-ready `ready`.
+- Added book-detail, whole-book processing, and failed-page retry endpoints.
+- Added page-level friendly error persistence and retry behavior.
+- Added FastAPI background tasks plus a process-local duplicate-job registry.
+- Added resume behavior that skips completed pages and detects stale running
+  status after a development server restart.
+- Added `/books/[id]` with progress, extracted-text review, and retry controls.
+- Kept Supabase, audio, a production worker queue, and new dependencies out of
+  this milestone.
+
+### Files changed
+
+- Backend: book/page models, response schemas, application state, OCR provider
+  selection, book routes, the new orchestration service, and processing tests.
+- Frontend: book API/types, upload-result continuation link, dynamic book route,
+  processing/status component, and component tests.
+- Documentation: `README.md`, `AGENTS.md`, `lesson.md`, architecture, decisions,
+  roadmap, and this log.
+
+### Tests run and results
+
+- Backend pytest: 21 passed; the existing FastAPI/Starlette TestClient
+  deprecation warning remains.
+- Backend Ruff check: passed.
+- Frontend Vitest: 8 passed.
+- Frontend ESLint: passed.
+- Frontend production build and strict TypeScript check: passed outside the
+  restricted sandbox after the expected Turbopack internal-port denial inside
+  it.
+- Live `GET /health` on port 8001: HTTP 200 with the expected development
+  response.
+- Live `GET /api/books/<book-id>`: three existing temporary image books returned
+  their ordered page details and `processing_active: false` without mutation.
+- Live frontend `/books/<book-id>` route on port 3001: HTTP 200.
+- Automated coverage includes ordered multi-page processing, mixed PDFs,
+  embedded-text preservation, OCR-disabled digital PDFs, saved failures,
+  one-page retry, completed-page resume behavior, API status responses, UI
+  completion, UI retry, and interrupted-job continuation.
+
+### Known issues
+
+- Milestone 4 whole-book orchestration was verified with synthetic files and
+  mock OCR. The real PaddleOCR provider was verified on one page in milestone
+  3, but a representative multi-page real Traditional Chinese book was not
+  available for an end-to-end manual run.
+- FastAPI `BackgroundTasks` and the in-memory registry are not a durable worker
+  queue. A backend restart stops active work, but saved pages can be resumed.
+- The registry prevents duplicate jobs only inside one backend process.
+- Local JSON can be inspected and resumed but is not suitable for concurrent or
+  long-term production persistence.
+- OCR errors and reading-order limitations from milestone 3 still apply.
+
+### Next recommended step
+
+Plan milestone 5: segment the saved text safely, create local mock audio, and
+build the first basic listening page without adding Azure Speech yet.

@@ -94,6 +94,36 @@ is still excluded from the MVP.
 **Reason:** This proves the provider and measures real quality without quietly
 implementing milestone 4's whole-book persistence and retry behavior.
 
+## `text_ready` is separate from audio-ready
+
+**Decision:** Use `text_ready` when all book pages have saved text. Keep `ready`
+for the later point when a book has playable audio.
+
+**Reason:** A book with extracted text is not yet ready for Echo's main listening
+experience. Separate names make backend state, frontend messages, and later
+audio orchestration much less ambiguous.
+
+## Save whole-book progress page by page
+
+**Decision:** The book processing service saves metadata before and after each
+page, skips completed pages on resume, and lets the user retry one failed page.
+
+**Reason:** OCR can take several seconds per page. Saving only at the end would
+lose useful work if the local backend stops, while rerunning completed pages
+would waste time and could produce inconsistent results.
+
+For milestone 4, FastAPI `BackgroundTasks` starts the work and an in-memory job
+registry prevents duplicate jobs in one backend process. This is suitable for a
+small local prototype, not durable production processing. A backend restart
+clears the registry, so the persisted page states are the source of truth and
+the UI can offer to continue unfinished work.
+
+**Decision:** When OCR is disabled, use a provider that fails only when an OCR
+page is actually read.
+
+**Reason:** A digital PDF whose pages already contain embedded text should still
+be able to reach `text_ready`; it does not require an OCR runtime.
+
 ## Azure Speech is planned behind a provider
 
 **Decision:** Later provide both mock speech and Azure Speech implementations,
@@ -104,7 +134,7 @@ vendors should not leak into page or playback code.
 
 ## Supabase is postponed
 
-**Decision:** Milestones 1 and 2 have no Supabase runtime package, schema, CLI
+**Decision:** Milestones 1 through 4 have no Supabase runtime package, schema, CLI
 setup, or cloud dependency.
 
 **Reason:** Temporary local storage is enough to prove both upload paths. Auth,
