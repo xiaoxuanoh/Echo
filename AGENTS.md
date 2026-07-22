@@ -3,8 +3,8 @@
 Before making changes:
 
 1. Understand and restate the user's task when the scope is not trivial.
-2. Inspect the existing code, tests, documentation, and repository status that
-   are directly relevant to the request.
+2. Inspect only the code, tests, documentation, and repository status that are
+   directly relevant to the request.
 3. State assumptions clearly when they affect the implementation.
 4. Make a short three-step micro-plan for meaningful implementation work.
 5. Ask for confirmation before major implementation, cost, deployment,
@@ -28,13 +28,69 @@ While working:
   problem for the current approved work.
 - Do not commit, push, or create/switch branches unless explicitly requested.
 - Preserve unrelated user changes.
-- Run verification proportional to the risk of the change and report anything
-  not tested.
+- Verify proportionally to risk using the Verification Budget below and report
+  anything not tested.
 - Update `tasks/SESSION_LOG.md` after meaningful work.
 - Keep the documented local port pair consistent: frontend 3001 and backend
   8001, unless the user explicitly chooses different ports.
 - Give concise completion reports: what changed, files touched, commands run,
   tests run, known limitations, and the next practical step.
+
+## Execution Policy
+
+Use this workflow for meaningful work:
+
+1. Understand.
+2. Plan.
+3. Implement.
+4. Verify.
+5. Investigate if needed.
+6. Report.
+
+Do not jump from implementation into repeated verification. If a command fails,
+stalls, or behaves unexpectedly, inspect the likely cause before rerunning it.
+
+## Repository exploration
+
+Before implementation, inspect only the repository status and files directly
+related to the approved task. Avoid repository-wide exploration unless broader
+architecture understanding is actually required. Avoid repeatedly reading
+unchanged files or documentation during the same task, including `AGENTS.md` and
+`docs/ARCHITECTURE.md`, unless new information is needed.
+
+## Verification Budget
+
+Verification should stop once sufficient engineering confidence has been
+obtained. Do not keep increasing confidence indefinitely. Confidence should
+increase in proportion to implementation risk, not to the number of commands
+executed.
+
+- If targeted tests pass, do not automatically run broader verification unless
+  the change risk justifies it.
+- If lint passes and modified files are isolated, a production build may not be
+  necessary.
+- If a production build stalls or behaves unexpectedly, investigate before
+  rerunning it.
+- Do not rerun identical verification commands without a concrete reason to
+  believe the outcome will change.
+
+Before commits or milestone completion, broader verification may still be
+appropriate; choose it based on risk and report anything not tested.
+
+## Escalation Policy
+
+If the approved task expands into a materially different task, stop and explain
+the expanded scope before proceeding. Examples include architectural redesign,
+database schema changes, authentication changes, infrastructure changes,
+deployment changes, public API changes, or significant new dependencies. Present
+the reason and wait for approval.
+
+## Decision Recording
+
+When a task involves a meaningful engineering decision, briefly explain the
+chosen approach, one or two reasonable alternatives, and why the chosen approach
+was selected. Do not generate lengthy design discussions for routine
+implementation details.
 
 ## Architecture guidance
 
@@ -102,3 +158,12 @@ roadmaps, session logs, or duplicate diagrams without explicit approval.
 
 The generated `frontend/AGENTS.md` contains additional version-specific Next.js
 instructions and also applies to files inside `frontend/`.
+
+## Engineering Philosophy
+
+Optimize for engineering quality rather than engineering activity. The objective
+is not to read the most files, execute the most commands, maximize verification,
+or produce unnecessarily long explanations. The objective is to understand the
+problem correctly, make sound decisions, implement only the approved scope,
+verify proportionally to risk, communicate clearly, and minimize unnecessary
+work. Engineering confidence is more important than engineering activity.
