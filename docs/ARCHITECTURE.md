@@ -9,7 +9,7 @@ Browser (Next.js)
   → multipart upload
 FastAPI
   → validation and source-specific preparation
-Temporary local storage (milestones 1–2)
+Temporary local storage (milestones 1–3)
 ```
 
 The frontend explains the workflow, gathers a confirmed page order, and shows
@@ -89,12 +89,23 @@ belong in routes.
 
 Automatic two-page splitting, dewarping, and background removal are excluded.
 
-## Planned OCR flow
+## OCR flow
 
-In milestones 3 and 4, only pages marked `requires_ocr` will go through the OCR
-service. Uploaded image pages and rendered scanned-PDF pages will share that
-service. Results will be stored separately per page, and OCR output will never
-be assumed perfect.
+Milestone 3 adds an `OcrProvider` boundary with mock and PaddleOCR
+implementations. The one-page preview endpoint resolves a normalized page from
+the shared page record, calls one provider, and returns text lines, confidence
+estimates, and processing time. It does not update `book.json`.
+
+The real provider lazily imports PaddleOCR so the API can still start in mock
+mode without the optional runtime. It uses the PP-OCRv5 mobile detector and
+multilingual recognizer on CPU, limits the longest inference side to 2,000
+pixels, and stores model files under the ignored local data directory. The
+mobile recognizer supports Traditional Chinese while using substantially less
+memory than the server models.
+
+Milestone 4 will send every `requires_ocr` page through this same boundary,
+store results separately per page, and manage page statuses and retries. OCR
+output will never be assumed perfect.
 
 ## Planned Cantonese speech flow
 

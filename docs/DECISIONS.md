@@ -65,13 +65,34 @@ and normalized PNG output.
 introduced later only if OCR tests show that contrast, thresholding, denoising,
 or perspective correction materially improves results.
 
-## PaddleOCR is planned, not installed
+## Optional PaddleOCR behind a provider
 
-**Decision:** Introduce PaddleOCR only when milestone 3 tests one Traditional
-Chinese page.
+**Decision:** Keep the base backend lightweight and place PaddlePaddle 3.3 and
+PaddleOCR 3.5 in `requirements-ocr.txt`. Use an `OcrProvider` boundary with mock
+and PaddleOCR implementations. Real OCR remains disabled by default.
 
-**Reason:** Delaying the large OCR runtime keeps the foundation quick to install
-and allows the OCR provider to be mocked and evaluated with real pages first.
+**Reason:** Local development and automated tests should not require model
+downloads. Lazy imports also let FastAPI start when only the base requirements
+are installed.
+
+The first real Apple Silicon test showed that the default PP-OCRv5 server
+detector and recognizer exceeded the practical memory available for a
+3024-by-4032 page photo and were terminated with exit 137. Echo therefore uses
+the configurable `PP-OCRv5_mobile_det` and `PP-OCRv5_mobile_rec` models with a
+2,000-pixel longest-side inference limit. The mobile recognizer supports
+Traditional Chinese, English, Simplified Chinese, and Japanese.
+
+The successful cached run found 35 lines at an average reported confidence of
+about 0.941 and took about 8.2 seconds on CPU after model download. Most main
+page text was readable. It also recognized stray text from the visible facing
+page and made several character and punctuation errors. Confidence is therefore
+diagnostic information, not a correctness guarantee. Automatic page splitting
+is still excluded from the MVP.
+
+**Decision:** Milestone 3 returns a one-page preview with `persisted: false`.
+
+**Reason:** This proves the provider and measures real quality without quietly
+implementing milestone 4's whole-book persistence and retry behavior.
 
 ## Azure Speech is planned behind a provider
 

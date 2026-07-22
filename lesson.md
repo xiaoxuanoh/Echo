@@ -1,4 +1,4 @@
-# Echo milestones 1 and 2 lesson
+# Echo milestones 1, 2, and 3 lesson
 
 This lesson explains what we built, why it is structured this way, and what you
 can learn from it as a beginner.
@@ -279,11 +279,39 @@ The page status `pending` means text reading is still future work. It does not
 mean the upload failed. Embedded-text pages are `completed` because their text
 has already been saved.
 
-## 13. What comes next
+## 13. What milestone 3 added
 
-Milestone 3 should add a replaceable OCR service and evaluate one real
-Traditional Chinese page before attempting a whole book. It should not add
-audio, authentication, cloud storage, or whole-book OCR yet.
+Echo can now ask one replaceable provider to read one prepared page image:
+
+```text
+prepared page → OcrProvider → text lines + confidence estimates
+                    ├─ mock provider
+                    └─ PaddleOCR provider
+```
+
+The mock provider keeps normal development fast and works without model files.
+The real provider is imported only when enabled. This is called a *lazy import*:
+the large OCR library is not loaded merely because FastAPI starts.
+
+The one-page endpoint is intentionally a preview. It returns the recognized
+text but does not write that text into `book.json`. This makes the experiment
+safe and keeps whole-book state changes in milestone 4.
+
+The first real photograph taught us two useful lessons. First, server-sized OCR
+models can require too much memory on a laptop, while the mobile PP-OCRv5 models
+completed the same page using CPU. Second, a high average confidence does not
+mean every character is correct: the model also read words from the partly
+visible facing page. Measurements and visual inspection are both necessary.
+
+No extra Pillow or OpenCV preprocessing was added. The normalized page was good
+enough for a first baseline, and automatically separating the facing page is a
+postponed feature rather than a small contrast adjustment.
+
+## 14. What comes next
+
+Milestone 4 should process every page that needs text reading, persist text and
+page statuses, and add retry handling. It should not add audio, authentication,
+cloud storage, or advanced page correction.
 
 The central idea to preserve is:
 

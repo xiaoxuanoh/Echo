@@ -2,9 +2,9 @@ import json
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, File, Form, Request, UploadFile
+from fastapi import APIRouter, File, Form, Path as ApiPath, Request, UploadFile
 
 from app.core.errors import EchoError
 from app.models.books import BookPageRecord, BookRecord
@@ -13,14 +13,91 @@ from app.schemas.books import (
     ImageUploadResult,
     PdfPageResult,
     PdfUploadResult,
+    OcrLineResult,
+    PageTextPreviewResult,
 )
 from app.services.book_metadata import LocalBookMetadataService
 from app.services.image_processing import ImageProcessingService
 from app.services.pdf_processing import PdfProcessingService
+from app.services.ocr import MockOcrProvider, PaddleOcrProvider
 from app.services.storage import LocalStorageService
 
 
 router = APIRouter(prefix="/api/books", tags=["books"])
+
+
+def _page_image_path(book_directory: Path, relative_path: str | None) -> Path:
+    if relative_path is None:
+        raise EchoError(
+            "page_image_unavailable",
+            "This page does not have a prepared image to read.",
+            status_code=409,
+        )
+    book_root = book_directory.resolve()
+    page_path = (book_directory / relative_path).resolve()
+    if not page_path.is_relative_to(book_root):
+        raise EchoError(
+            "page_image_invalid",
+            "The prepared page image path is invalid.",
+            status_code=500,
+        )
+    return page_path
+
+
+@router.post(
+    "/{book_id}/pages/{page_number}/text-preview",
+    response_model=PageTextPreviewResult,
+)
+def preview_page_text(
+    request: Request,
+    book_id: UUID,
+    page_number: int = ApiPath(ge=1),
+) -> PageTextPreviewResult:
+    settings = request.app.state.settings
+    book_directory = settings.local_storage_path / str(book_id)
+    book = LocalBookMetadataService().load(book_directory)
+    page = next(
+        (candidate for candidate in book.pages if candidate.page_number == page_number),
+        None,
+    )
+    if page is None:
+        raise EchoError(
+            "page_not_found",
+            "Echo could not find that page in this temporary book.",
+            status_code=404,
+        )
+
+    image_path = _page_image_path(book_directory, page.processed_image_path)
+    if settings.use_mock_ocr:
+        provider = MockOcrProvider()
+    elif settings.ocr_enabled:
+        provider = PaddleOcrProvider(
+            text_detection_model=settings.ocr_text_detection_model,
+            text_recognition_model=settings.ocr_text_recognition_model,
+            max_image_side=settings.ocr_max_image_side,
+            cache_path=settings.ocr_model_cache_path,
+        )
+    else:
+        raise EchoError(
+            "ocr_disabled",
+            "Page text reading is disabled in this development environment.",
+            status_code=503,
+        )
+
+    result = provider.read_page(image_path)
+    return PageTextPreviewResult(
+        book_id=str(book.id),
+        page_id=str(page.id),
+        page_number=page.page_number,
+        provider=result.provider,
+        text=result.text,
+        lines=[
+            OcrLineResult(text=line.text, confidence=line.confidence)
+            for line in result.lines
+        ],
+        average_confidence=result.average_confidence,
+        processing_time_seconds=result.processing_time_seconds,
+    )
 
 
 def _safe_extension(filename: str | None) -> str:
@@ -150,7 +227,9 @@ async def upload_images(
     try:
         parsed_rotations = json.loads(rotations)
     except json.JSONDecodeError as error:
-        raise EchoError("invalid_rotations", "The page rotation information is invalid.") from error
+        raise EchoError(
+            "invalid_rotations", "The page rotation information is invalid."
+        ) from error
 
     if not isinstance(parsed_rotations, list) or len(parsed_rotations) != len(files):
         raise EchoError(

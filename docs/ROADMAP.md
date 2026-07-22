@@ -2,9 +2,9 @@
 
 ## Current position
 
-Milestones 1 and 2 are complete. A real JPEG page photo was manually verified
-through both the upload foundation and shared-page metadata flow. Milestone 3
-is next.
+Milestones 1, 2, and 3 are complete. A real Traditional Chinese JPEG page was
+manually verified through upload, shared-page preparation, and one-page
+PaddleOCR evaluation. Milestone 4 is next.
 
 ## Milestone 1 — Local upload foundation (complete)
 
@@ -24,13 +24,13 @@ No OCR, audio, Supabase, authentication, or deployment.
 
 No OCR is run in this milestone.
 
-## Milestone 3 — First Traditional Chinese OCR page (next)
+## Milestone 3 — First Traditional Chinese OCR page (complete)
 
 - replaceable PaddleOCR service
 - one-page quality evaluation
 - optional basic preprocessing when evidence supports it
 
-## Milestone 4 — Whole-book text extraction
+## Milestone 4 — Whole-book text extraction (next)
 
 - process every OCR-required page, including mixed PDFs
 - save text and page statuses

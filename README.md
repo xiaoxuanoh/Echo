@@ -9,7 +9,8 @@ ordered page model before text recognition and speech generation.
 
 ## Current milestone
 
-Milestone 2 is complete. Echo now has a local shared ordered-page foundation:
+Milestone 3 is complete. Echo now has a local one-page Traditional Chinese text
+evaluation workflow on top of the shared ordered-page foundation:
 
 - a calm landing page and `/books/new` workflow;
 - PDF upload, validation, page counting, and all-page classification;
@@ -20,13 +21,16 @@ Milestone 2 is complete. Echo now has a local shared ordered-page foundation:
 - saved embedded PDF text for each qualifying page;
 - rendered PNG processing copies for scanned PDF pages;
 - the same ordered page fields for PDFs and page photos;
+- replaceable mock and PaddleOCR page-reading providers;
+- a one-page text-preview endpoint that does not alter book metadata;
+- CPU-friendly PP-OCRv5 mobile models stored in an ignored local cache;
 - structured errors, upload safeguards, and automated tests.
 
-Real text recognition, Cantonese audio, accounts, Supabase, and deployment are
-not part of the completed milestones.
+Whole-book text recognition, Cantonese audio, accounts, Supabase, and deployment
+are not part of the completed milestones.
 
-The next planned step is milestone 3: introduce a replaceable OCR service and
-evaluate one representative Traditional Chinese page. It has not started yet.
+The next planned step is milestone 4: process all pages that need text reading,
+save their text and statuses, and add retry handling. It has not started yet.
 
 ## Core user flow
 
@@ -44,6 +48,7 @@ Upload a PDF or page photos
 - Backend: FastAPI, Pydantic, Uvicorn, typed Python
 - PDF: pypdfium2 (PDFium)
 - Images: Pillow
+- Optional text recognition: PaddleOCR 3.5 with PaddlePaddle 3.3 CPU
 - Testing: Vitest, React Testing Library, pytest, FastAPI TestClient
 - Future storage and accounts: Supabase, deliberately postponed
 
@@ -66,6 +71,24 @@ python -m pip install -r requirements-dev.txt
 cp .env.example .env
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8001
 ```
+
+The normal backend uses mock text reading and does not require the large OCR
+runtime. To evaluate a real page locally, install the optional dependencies:
+
+```bash
+python -m pip install paddlepaddle==3.3.0 \
+  -i https://www.paddlepaddle.org.cn/packages/stable/cpu/
+python -m pip install paddleocr==3.5.0
+```
+
+The equivalent repeatable project command is:
+
+```bash
+python -m pip install -r requirements-ocr.txt
+```
+
+Then set `USE_MOCK_OCR=false` and `OCR_ENABLED=true` in `backend/.env`. The first
+real request downloads the selected models to `backend/data/models/paddlex/`.
 
 The API is available at `http://localhost:8001`; its interactive documentation
 is at `http://localhost:8001/docs`.
@@ -105,6 +128,12 @@ MAX_IMAGE_SIZE_MB=15
 MAX_IMAGE_UPLOAD_COUNT=100
 MAX_IMAGE_PIXELS=50000000
 LOCAL_STORAGE_PATH=./data
+USE_MOCK_OCR=true
+OCR_ENABLED=false
+OCR_TEXT_DETECTION_MODEL=PP-OCRv5_mobile_det
+OCR_TEXT_RECOGNITION_MODEL=PP-OCRv5_mobile_rec
+OCR_MAX_IMAGE_SIDE=2000
+OCR_MODEL_CACHE_PATH=./data/models/paddlex
 ```
 
 These are development safeguards, not permanent product limits. If the backend
@@ -138,12 +167,29 @@ Health check while the backend is running:
 curl --fail http://localhost:8001/health
 ```
 
+## One-page text evaluation
+
+After uploading a page image, preview its text with its temporary book ID:
+
+```bash
+curl --request POST \
+  http://localhost:8001/api/books/<book-id>/pages/1/text-preview
+```
+
+The response includes ordered text lines, confidence values, processing time,
+and the active provider. It deliberately reports `persisted: false`; saving and
+processing every page belongs to milestone 4.
+
 ## Current limitations
 
 - PDF classification is a practical character-count heuristic, not a guarantee
   that embedded text is complete or in natural reading order.
-- No OCR is run. Pages without enough embedded text are rendered and marked as
-  waiting for text reading later.
+- Real OCR is available only through the one-page preview endpoint. The upload
+  workflow does not automatically run it or save its result yet.
+- PaddleOCR confidence is a model estimate, not proof that the wording or
+  reading order is correct.
+- A photographed facing page can introduce stray recognized text. Automatic
+  two-page splitting and advanced cropping remain postponed.
 - No audio is generated.
 - Local book/page metadata is saved in JSON, not a database, and there is not
   yet a book-library retrieval API.

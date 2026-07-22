@@ -145,3 +145,74 @@ and measure output quality before attempting whole-book OCR.
 - Pushed to `origin/main` on GitHub.
 - Local `main` and `origin/main` matched after the push.
 - No additional branch or pull request was created.
+
+## 2026-07-22 — Milestone 3 first Traditional Chinese page
+
+### Task
+
+Add a replaceable OCR service and evaluate exactly one representative
+Traditional Chinese page without starting whole-book processing.
+
+### Implementation summary
+
+- Added mock and PaddleOCR providers behind one typed `OcrProvider` boundary.
+- Added a one-page `text-preview` API that reads normalized shared-page images
+  without changing `book.json`.
+- Added confidence, timing, provider, and non-persistence fields to the result.
+- Kept real OCR optional and disabled by default.
+- Installed and verified PaddlePaddle 3.3.0 and PaddleOCR 3.5.0 locally.
+- Stored downloaded model files in the ignored project-local data cache.
+- Switched from server to mobile PP-OCRv5 models after the server models were
+  terminated with exit 137 on the full-resolution photo.
+- Added no whole-book OCR, audio, frontend OCR controls, Supabase, or workers.
+
+### Files changed
+
+- Backend: OCR configuration, optional requirements, OCR service, page-preview
+  response schemas and route, metadata loading, and OCR tests.
+- Documentation: `README.md`, `AGENTS.md`, `lesson.md`, architecture, decisions,
+  roadmap, and this log.
+
+### Real-page evaluation
+
+- Input: the existing normalized 3024-by-4032 Traditional Chinese page photo.
+- Mobile models downloaded successfully and were reused from cache afterward.
+- Cached run: 35 non-empty lines, average reported confidence 0.9407, about
+  8.2 seconds on Apple Silicon CPU.
+- Most text on the intended right-hand page was readable.
+- Known errors included incorrect characters and punctuation plus stray text
+  from the partially visible facing page.
+- No preprocessing was added because automatic facing-page separation is out of
+  scope and the current image provides a useful baseline.
+
+### Tests run and results
+
+- Backend pytest: 15 passed, including four one-page OCR tests; the existing
+  FastAPI/Starlette TestClient deprecation warning remains.
+- Backend Ruff: passed.
+- PaddlePaddle runtime check: passed on one Apple Silicon CPU.
+- PaddleOCR imports and reports version 3.5.0.
+- Optional OCR requirements dry-run: passed with all pinned packages satisfied.
+- Cached real PaddleOCR evaluation: passed with no repeat download.
+- Live `GET /health` on port 8001: HTTP 200 with the expected response.
+- Live one-page preview on the existing temporary book: HTTP 200 in mock mode,
+  with `persisted: false` and the expected Traditional Chinese mock text.
+- Frontend Vitest: 5 passed.
+- Frontend ESLint: passed.
+- Frontend production build and strict TypeScript check: passed outside the
+  restricted sandbox after the expected internal-port denial inside it.
+
+### Known issues
+
+- Confidence values do not prove textual correctness or reading order.
+- The synchronous preview request can take several seconds after models are
+  cached and considerably longer on the first download.
+- The unused server-model files from the failed baseline remain in ignored
+  local cache; they are not committed.
+- Whole-book persistence, statuses, and retry handling remain milestone 4.
+
+### Next recommended step
+
+Plan milestone 4 around orchestration that processes every OCR-required page,
+persists each result safely, records page statuses, and supports retrying failed
+pages without redoing completed work.

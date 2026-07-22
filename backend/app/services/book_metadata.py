@@ -10,6 +10,23 @@ class LocalBookMetadataService:
 
     metadata_filename = "book.json"
 
+    def load(self, book_directory: Path) -> BookRecord:
+        source = book_directory / self.metadata_filename
+        try:
+            return BookRecord.model_validate_json(source.read_text(encoding="utf-8"))
+        except FileNotFoundError as error:
+            raise EchoError(
+                "book_not_found",
+                "Echo could not find that temporary book.",
+                status_code=404,
+            ) from error
+        except (OSError, ValueError) as error:
+            raise EchoError(
+                "book_metadata_invalid",
+                "Echo could not read the temporary book information.",
+                status_code=500,
+            ) from error
+
     def save(self, book_directory: Path, book: BookRecord) -> Path:
         destination = book_directory / self.metadata_filename
         temporary_destination = book_directory / f".{self.metadata_filename}.tmp"

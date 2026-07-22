@@ -47,6 +47,24 @@ class ImageUploadResult(BaseModel):
     processing_status: Literal["uploaded"] = "uploaded"
 
 
+class OcrLineResult(BaseModel):
+    text: str
+    confidence: float
+
+
+class PageTextPreviewResult(BaseModel):
+    book_id: str
+    page_id: str
+    page_number: int
+    provider: Literal["mock", "paddleocr"]
+    text: str
+    lines: list[OcrLineResult]
+    average_confidence: float | None
+    processing_time_seconds: float
+    preprocessing: Literal["normalized_page"] = "normalized_page"
+    persisted: Literal[False] = False
+
+
 class HealthResult(BaseModel):
     status: Literal["ok"] = "ok"
     app: str
