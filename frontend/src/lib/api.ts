@@ -1,4 +1,6 @@
 import type {
+  AudioProcessingAccepted,
+  BookAudio,
   BookDetail,
   BookProcessingAccepted,
   ImageUploadResult,
@@ -52,6 +54,29 @@ export async function retryPageText(
     ),
     `Echo could not retry page ${pageNumber}.`,
   );
+}
+
+export async function getBookAudio(bookId: string): Promise<BookAudio> {
+  return parseResponse<BookAudio>(
+    await fetch(`${API_BASE_URL}/api/books/${bookId}/audio`, { cache: "no-store" }),
+    "Echo could not load the listening audio.",
+  );
+}
+
+export async function prepareBookAudio(
+  bookId: string,
+): Promise<AudioProcessingAccepted> {
+  return parseResponse<AudioProcessingAccepted>(
+    await fetch(`${API_BASE_URL}/api/books/${bookId}/prepare-audio`, {
+      method: "POST",
+    }),
+    "Echo could not start creating listening audio.",
+  );
+}
+
+export function audioFileUrl(path: string): string {
+  if (path.startsWith("http://") || path.startsWith("https://")) return path;
+  return `${API_BASE_URL}${path}`;
 }
 
 export async function uploadPdf(file: File): Promise<PdfUploadResult> {

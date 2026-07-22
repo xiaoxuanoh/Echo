@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 
 import { getBook, retryPageText, startTextProcessing } from "@/lib/api";
 import type {
@@ -194,9 +195,26 @@ export function BookProcessing({ bookId }: { bookId: string }) {
           </p>
         )}
         {book.processing_status === "text_ready" && (
-          <p className="mt-4 rounded-xl border border-[#a9c5b3] bg-[#f4faf5] p-4 text-[#376247]">
-            All page text is prepared. Audio comes in the next milestones.
-          </p>
+          <div className="mt-4 rounded-xl border border-[#a9c5b3] bg-[#f4faf5] p-4 text-[#376247]">
+            <p>All page text is prepared. You can now create local mock audio.</p>
+            <Link
+              href={`/books/${book.id}/listen`}
+              className="mt-3 inline-flex min-h-11 items-center rounded-lg bg-accent px-4 font-semibold text-white hover:bg-accent-dark"
+            >
+              Open listening page
+            </Link>
+          </div>
+        )}
+        {book.processing_status === "ready" && (
+          <div className="mt-4 rounded-xl border border-[#a9c5b3] bg-[#f4faf5] p-4 text-[#376247]">
+            <p>Listening audio is ready.</p>
+            <Link
+              href={`/books/${book.id}/listen`}
+              className="mt-3 inline-flex min-h-11 items-center rounded-lg bg-accent px-4 font-semibold text-white hover:bg-accent-dark"
+            >
+              Listen to your book
+            </Link>
+          </div>
         )}
         {book.error_message && !error && (
           <p className="mt-4 rounded-xl border border-[#d9b9b4] bg-[#fff3f1] p-4 text-[#783a33]">

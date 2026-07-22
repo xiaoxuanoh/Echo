@@ -108,6 +108,7 @@ class BookDetailResult(BaseModel):
     error_message: str | None
     completed_pages: int
     failed_pages: int
+    audio_segment_count: int
     processing_active: bool
     pages: list[BookPageDetailResult]
     created_at: datetime
@@ -117,6 +118,32 @@ class BookDetailResult(BaseModel):
 class BookProcessingAccepted(BaseModel):
     book_id: UUID
     processing_status: Literal["extracting_text", "running_ocr"]
+    message: str
+
+
+class AudioSegmentResult(BaseModel):
+    id: UUID
+    segment_number: int
+    page_id: UUID | None
+    page_number: int | None
+    source_text: str
+    audio_url: str | None
+    duration_seconds: float | None
+    processing_status: Literal["pending", "generating", "completed", "failed"]
+    error_message: str | None
+
+
+class BookAudioResult(BaseModel):
+    book_id: UUID
+    title: str
+    processing_status: BookProcessingStatus
+    processing_active: bool
+    segments: list[AudioSegmentResult]
+
+
+class AudioProcessingAccepted(BaseModel):
+    book_id: UUID
+    processing_status: Literal["generating_audio"]
     message: str
 
 

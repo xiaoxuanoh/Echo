@@ -26,6 +26,7 @@ PageStatus = Literal[
     "completed",
     "failed",
 ]
+AudioSegmentStatus = Literal["pending", "generating", "completed", "failed"]
 
 
 def utc_now() -> datetime:
@@ -48,6 +49,20 @@ class BookPageRecord(BaseModel):
     updated_at: datetime
 
 
+class AudioSegmentRecord(BaseModel):
+    id: UUID
+    book_id: UUID
+    page_id: UUID | None = None
+    segment_number: int = Field(ge=1)
+    source_text: str
+    audio_storage_path: str | None = None
+    duration_seconds: float | None = None
+    processing_status: AudioSegmentStatus
+    error_message: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
 class BookRecord(BaseModel):
     id: UUID
     user_id: UUID | None = None
@@ -59,5 +74,6 @@ class BookRecord(BaseModel):
     status: BookStatus
     error_message: str | None = None
     pages: list[BookPageRecord]
+    audio_segments: list[AudioSegmentRecord] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime

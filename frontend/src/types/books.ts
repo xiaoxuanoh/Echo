@@ -87,6 +87,7 @@ export type BookDetail = {
   error_message: string | null;
   completed_pages: number;
   failed_pages: number;
+  audio_segment_count: number;
   processing_active: boolean;
   pages: BookPageDetail[];
   created_at: string;
@@ -96,5 +97,31 @@ export type BookDetail = {
 export type BookProcessingAccepted = {
   book_id: string;
   processing_status: "extracting_text" | "running_ocr";
+  message: string;
+};
+
+export type AudioSegment = {
+  id: string;
+  segment_number: number;
+  page_id: string | null;
+  page_number: number | null;
+  source_text: string;
+  audio_url: string | null;
+  duration_seconds: number | null;
+  processing_status: "pending" | "generating" | "completed" | "failed";
+  error_message: string | null;
+};
+
+export type BookAudio = {
+  book_id: string;
+  title: string;
+  processing_status: BookProcessingStatus;
+  processing_active: boolean;
+  segments: AudioSegment[];
+};
+
+export type AudioProcessingAccepted = {
+  book_id: string;
+  processing_status: "generating_audio";
   message: string;
 };

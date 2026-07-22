@@ -9,8 +9,8 @@ ordered page model before text recognition and speech generation.
 
 ## Current milestone
 
-Milestone 4 is complete. Echo can now prepare and save the text for every page
-in a temporary local book:
+Milestone 5 is complete. Echo can now prepare page text, split it into ordered
+segments, create local mock audio, and play it in the browser:
 
 - a calm landing page and `/books/new` workflow;
 - PDF upload, validation, page counting, and all-page classification;
@@ -26,16 +26,19 @@ in a temporary local book:
 - whole-book page-by-page text preparation that saves after every page;
 - a `text_ready` book status that is distinct from audio-ready;
 - a temporary book-detail page with progress, extracted-text review, and retry;
+- safe text segmentation that keeps source page links;
+- local mock WAV audio generation for free development playback;
+- a first `/books/<book-id>/listen` page with native audio controls;
+- previous/next segment controls, playback speed, and browser-saved progress;
 - safe resume behavior that skips completed pages after an interrupted local job;
 - CPU-friendly PP-OCRv5 mobile models stored in an ignored local cache;
 - structured errors, upload safeguards, and automated tests.
 
-Audio generation, accounts, Supabase, and deployment are not part of the
-completed milestones.
+Real Azure audio generation, accounts, Supabase, and deployment are not part of
+the completed milestones.
 
-The next planned step is milestone 5: divide saved text into safe ordered
-segments, create local mock audio, and build the first listening page. It has
-not started yet.
+The next planned step is milestone 6: integrate Azure Speech for real Hong Kong
+Cantonese audio while keeping mock mode available.
 
 ## Core user flow
 
@@ -43,8 +46,8 @@ not started yet.
 Upload a PDF or page photos
 → prepare an ordered collection of pages
 → extract and save Traditional Chinese text
-→ create Cantonese audio (future milestone)
-→ listen to the book (future milestone)
+→ create local mock audio
+→ listen to the book
 ```
 
 ## Technology
@@ -139,6 +142,8 @@ OCR_TEXT_DETECTION_MODEL=PP-OCRv5_mobile_det
 OCR_TEXT_RECOGNITION_MODEL=PP-OCRv5_mobile_rec
 OCR_MAX_IMAGE_SIDE=2000
 OCR_MODEL_CACHE_PATH=./data/models/paddlex
+USE_MOCK_TTS=true
+TTS_SEGMENT_MAX_CHARACTERS=900
 ```
 
 These are development safeguards, not permanent product limits. If the backend
@@ -203,6 +208,23 @@ POST /api/books/<book-id>/pages/<page-number>/retry-text
 If the backend stops during preparation, restart it and use **Continue preparing
 text**. Completed pages are skipped. A failed page can be retried separately.
 
+## Mock listening
+
+When a book shows `Page text ready`, open `/books/<book-id>/listen` and choose
+**Create listening audio**. Echo splits saved page text into ordered segments,
+creates local mock WAV files, and then shows a browser audio player.
+
+The local API endpoints are:
+
+```text
+GET  /api/books/<book-id>/audio
+POST /api/books/<book-id>/prepare-audio
+GET  /api/books/<book-id>/audio/<segment-number>/file
+```
+
+Playback position and speed are saved in the browser for local development.
+This is not user-account storage yet.
+
 ## Current limitations
 
 - PDF classification is a practical character-count heuristic, not a guarantee
@@ -211,7 +233,8 @@ text**. Completed pages are skipped. A failed page can be retried separately.
   reading order is correct.
 - A photographed facing page can introduce stray recognized text. Automatic
   two-page splitting and advanced cropping remain postponed.
-- No audio is generated.
+- Audio is mock WAV output only. Real Hong Kong Cantonese speech is planned for
+  milestone 6.
 - Local book/page metadata is saved in JSON, not a database. A temporary
   book-detail API exists, but there is no book library yet.
 - Successfully processed uploads are not removed automatically.

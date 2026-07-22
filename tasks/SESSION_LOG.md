@@ -293,3 +293,80 @@ completion.
 
 Plan milestone 5: segment the saved text safely, create local mock audio, and
 build the first basic listening page without adding Azure Speech yet.
+
+### Publication
+
+- Milestone 4 commit: `74e62a6` (`Build Echo milestone 4 text preparation`)
+- Pushed to `origin/main` on GitHub.
+- No additional branch or pull request was created.
+
+## 2026-07-22 — Milestone 5 segments and mock listening
+
+### Task
+
+Split prepared page text into ordered audio-sized segments, create local mock
+audio, and add the first listening page without Azure Speech, Supabase, or new
+infrastructure.
+
+### Implementation summary
+
+- Added persisted local audio segment records to `book.json`.
+- Added a text segmentation service with configurable maximum segment length.
+- Added a mock TTS provider that creates local WAV files with Python's standard
+  library.
+- Added an audio processing service that creates ordered mock audio and marks
+  the book `ready` when every segment has a playable file.
+- Added audio detail, prepare-audio, and local audio-file endpoints.
+- Added `/books/[id]/listen` with a native audio player, previous/next segment
+  controls, playback speed, source-text review, and browser-local progress.
+- Linked text-ready and audio-ready books from the book detail page to the
+  listening page.
+- Kept Azure Speech, Supabase, authentication, durable workers, translation,
+  graph infrastructure, and new dependencies out of this milestone.
+
+### Files changed
+
+- Backend: settings, book models, response schemas, book routes, text
+  segmentation service, mock TTS provider, audio orchestration service, and
+  audio processing tests.
+- Frontend: book/audio API helpers, shared types, book-detail listening links,
+  listening route, audio player component, and component tests.
+- Documentation: `README.md`, `AGENTS.md`, `lesson.md`, architecture,
+  decisions, roadmap, environment example, and this log.
+
+### Tests run and results
+
+- Backend pytest: 25 passed; the existing FastAPI/Starlette TestClient
+  deprecation warning remains.
+- Backend Ruff check: passed.
+- Frontend Vitest: 11 passed.
+- Frontend ESLint: passed.
+- Frontend production build and strict TypeScript check: passed outside the
+  restricted sandbox after the expected Turbopack internal-port denial inside
+  it.
+- `git diff --check`: passed.
+
+### Not manually verified
+
+- Live `GET /health` on port 8001 was not verified in this turn because no
+  backend response was available from the shell when checked.
+- A real uploaded book was not manually played through the browser in this turn.
+  The mock audio endpoint was verified by automated tests returning a WAV file
+  beginning with the expected `RIFF` header.
+
+### Known issues
+
+- Mock audio is a generated placeholder tone, not real Cantonese narration.
+- Browser progress is saved in localStorage only. It is not account-backed and
+  will not sync across browsers.
+- FastAPI `BackgroundTasks` and the in-memory registry remain local and
+  non-durable.
+- Local JSON and WAV files remain development storage, not production
+  persistence.
+
+### Next recommended step
+
+Review Milestone 5 locally by preparing a text-ready book, opening
+`/books/<book-id>/listen`, creating mock audio, and playing the generated
+segments. If accepted, commit and push Milestone 5 before planning Milestone 6
+Azure Speech.

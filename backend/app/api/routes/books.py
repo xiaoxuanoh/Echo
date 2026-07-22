@@ -14,10 +14,14 @@ from fastapi import (
     UploadFile,
     status,
 )
+from fastapi.responses import FileResponse
 
 from app.core.errors import EchoError
 from app.models.books import BookPageRecord, BookRecord
 from app.schemas.books import (
+    AudioProcessingAccepted,
+    AudioSegmentResult,
+    BookAudioResult,
     BookDetailResult,
     BookPageDetailResult,
     BookProcessingAccepted,
@@ -29,6 +33,7 @@ from app.schemas.books import (
     PdfUploadResult,
 )
 from app.services.book_metadata import LocalBookMetadataService
+from app.services.audio_processing import BookAudioProcessingService
 from app.services.book_processing import (
     BookTextProcessingService,
     LocalBookJobRegistry,
@@ -68,6 +73,20 @@ def _processing_service(request: Request) -> BookTextProcessingService:
     )
 
 
+def _audio_processing_service(request: Request) -> BookAudioProcessingService:
+    settings = request.app.state.settings
+    if not settings.use_mock_tts:
+        raise EchoError(
+            "tts_not_configured",
+            "Mock audio is disabled, and real speech is not configured yet.",
+            status_code=501,
+        )
+    return BookAudioProcessingService(
+        storage_root=settings.local_storage_path,
+        max_segment_characters=settings.tts_segment_max_characters,
+    )
+
+
 def _book_result(
     book: BookRecord,
     *,
@@ -85,6 +104,7 @@ def _book_result(
             page.processing_status == "completed" for page in book.pages
         ),
         failed_pages=sum(page.processing_status == "failed" for page in book.pages),
+        audio_segment_count=len(book.audio_segments),
         processing_active=processing_active,
         pages=[
             BookPageDetailResult(
@@ -102,6 +122,45 @@ def _book_result(
         ],
         created_at=book.created_at,
         updated_at=book.updated_at,
+    )
+
+
+def _audio_result(
+    book: BookRecord,
+    *,
+    processing_active: bool = False,
+) -> BookAudioResult:
+    page_numbers_by_id = {page.id: page.page_number for page in book.pages}
+    return BookAudioResult(
+        book_id=book.id,
+        title=book.title,
+        processing_status=book.status,
+        processing_active=processing_active,
+        segments=[
+            AudioSegmentResult(
+                id=segment.id,
+                segment_number=segment.segment_number,
+                page_id=segment.page_id,
+                page_number=(
+                    page_numbers_by_id.get(segment.page_id)
+                    if segment.page_id is not None
+                    else None
+                ),
+                source_text=segment.source_text,
+                audio_url=(
+                    f"/api/books/{book.id}/audio/{segment.segment_number}/file"
+                    if segment.audio_storage_path
+                    else None
+                ),
+                duration_seconds=segment.duration_seconds,
+                processing_status=segment.processing_status,
+                error_message=segment.error_message,
+            )
+            for segment in sorted(
+                book.audio_segments,
+                key=lambda item: item.segment_number,
+            )
+        ],
     )
 
 
@@ -124,6 +183,17 @@ def _run_page_retry(
 ) -> None:
     try:
         service.retry_page(book_id, page_number)
+    finally:
+        registry.finish(book_id)
+
+
+def _run_audio_job(
+    service: BookAudioProcessingService,
+    registry: LocalBookJobRegistry,
+    book_id: UUID,
+) -> None:
+    try:
+        service.process_audio(book_id)
     finally:
         registry.finish(book_id)
 
@@ -408,6 +478,87 @@ def get_book(request: Request, book_id: UUID) -> BookDetailResult:
     book = LocalBookMetadataService().load(settings.local_storage_path / str(book_id))
     registry: LocalBookJobRegistry = request.app.state.book_job_registry
     return _book_result(book, processing_active=registry.is_active(book_id))
+
+
+@router.get("/{book_id}/audio", response_model=BookAudioResult)
+def get_book_audio(request: Request, book_id: UUID) -> BookAudioResult:
+    settings = request.app.state.settings
+    book = LocalBookMetadataService().load(settings.local_storage_path / str(book_id))
+    registry: LocalBookJobRegistry = request.app.state.book_job_registry
+    return _audio_result(book, processing_active=registry.is_active(book_id))
+
+
+@router.post(
+    "/{book_id}/prepare-audio",
+    response_model=AudioProcessingAccepted,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def prepare_book_audio(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    book_id: UUID,
+) -> AudioProcessingAccepted:
+    registry: LocalBookJobRegistry = request.app.state.book_job_registry
+    if not registry.start(book_id):
+        raise EchoError(
+            "book_processing_active",
+            "Echo is already preparing this book.",
+            status_code=409,
+        )
+    try:
+        service = _audio_processing_service(request)
+        book = service.prepare_audio_job(book_id)
+    except Exception:
+        registry.finish(book_id)
+        raise
+
+    background_tasks.add_task(_run_audio_job, service, registry, book_id)
+    return AudioProcessingAccepted(
+        book_id=book.id,
+        processing_status="generating_audio",
+        message="Echo has started creating listening audio.",
+    )
+
+
+@router.get("/{book_id}/audio/{segment_number}/file")
+def get_audio_file(
+    request: Request,
+    book_id: UUID,
+    segment_number: int = ApiPath(ge=1),
+) -> FileResponse:
+    settings = request.app.state.settings
+    book_directory = settings.local_storage_path / str(book_id)
+    book = LocalBookMetadataService().load(book_directory)
+    segment = next(
+        (
+            candidate
+            for candidate in book.audio_segments
+            if candidate.segment_number == segment_number
+        ),
+        None,
+    )
+    if segment is None or segment.audio_storage_path is None:
+        raise EchoError(
+            "audio_not_found",
+            "Echo could not find audio for that segment.",
+            status_code=404,
+        )
+
+    book_root = book_directory.resolve()
+    audio_path = (book_directory / segment.audio_storage_path).resolve()
+    if not audio_path.is_relative_to(book_root):
+        raise EchoError(
+            "audio_path_invalid",
+            "The audio file path is invalid.",
+            status_code=500,
+        )
+    if not audio_path.exists():
+        raise EchoError(
+            "audio_file_missing",
+            "Echo could not find the local audio file.",
+            status_code=404,
+        )
+    return FileResponse(audio_path, media_type="audio/wav", filename=audio_path.name)
 
 
 @router.post(

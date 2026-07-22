@@ -88,7 +88,7 @@ Browser (Next.js)
   → multipart upload
 FastAPI
   → validation and source-specific preparation
-Temporary local storage (milestones 1–4)
+Temporary local storage (milestones 1–5)
 ```
 
 The frontend explains the workflow, gathers a confirmed page order, and shows
@@ -139,6 +139,10 @@ photo uploads now produce the same ordered page fields: page ID and number,
 source paths, normalized path, extraction method, extracted text, rotation,
 status, and timestamps. The records are stored together in `book.json` until a
 database is introduced.
+
+Milestone 5 adds ordered `AudioSegmentRecord` metadata to the same local book
+record. Each segment keeps the source text and source page link that produced
+it, then points to a local mock WAV file when generation completes.
 
 In the long-term conceptual model, these local records are an early practical
 form of `SourceDocument`, `Page`, and `TextRepresentation`. They should evolve
@@ -206,25 +210,28 @@ running job from stale persisted status. This is intentionally not a durable
 queue: after a backend restart, the UI offers to continue from the first
 unfinished page.
 
-## Planned narration and speech flow
+## Narration and speech flow
 
-In milestones 5 and 6, page text will be divided into safe ordered segments.
-Each audio record will retain its source text and source page. A mock provider
-will work locally before Azure Speech is enabled. The initial real voice target
-is Hong Kong Cantonese with a configurable `zh-HK` voice, but the architecture
-should keep voice, locale, narration, and audio asset relationships explicit
-enough to support additional languages later.
+Milestone 5 divides page text into safe ordered segments. Each audio record
+retains its source text and source page. A mock provider creates local WAV files
+so the listening page can be tested without paid speech credentials.
+
+Milestone 6 will add Azure Speech. The initial real voice target is Hong Kong
+Cantonese with a configurable `zh-HK` voice, but the architecture should keep
+voice, locale, narration, and audio asset relationships explicit enough to
+support additional languages later.
 
 ## Storage model
 
-Milestone 2 uses:
+Milestones 2 through 5 use:
 
 ```text
 backend/data/<book-id>/
 ├── book.json                  # book plus ordered page metadata
 ├── source.pdf                 # PDF flow
 ├── originals/                 # original photo uploads, image flow
-└── pages/                     # normalized photos or rendered PDF pages
+├── pages/                     # normalized photos or rendered PDF pages
+└── audio/                     # generated mock audio segments
 ```
 
 Embedded-text PDF pages can have no processing image. Photo pages and scanned
@@ -232,9 +239,9 @@ PDF pages have a normalized PNG path. Each page stores its extracted text,
 status, and a friendly error when text preparation fails. All stored paths are
 relative to the UUID book directory.
 
-The complete MVP model will add `audio_segments` and `reading_progress`, then
-move the local book/page records to Supabase in milestone 8. User ownership and
-Row Level Security will be designed with authentication.
+The complete MVP model will later add durable `reading_progress`, then move the
+local book/page/audio records to Supabase in milestone 8. User ownership and Row
+Level Security will be designed with authentication.
 
 Postgres tables can represent the conceptual graph with normal foreign keys,
 join tables, and indexes. A graph database, RDF store, vector database, or

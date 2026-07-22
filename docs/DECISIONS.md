@@ -124,6 +124,15 @@ page is actually read.
 **Reason:** A digital PDF whose pages already contain embedded text should still
 be able to reach `text_ready`; it does not require an OCR runtime.
 
+## Mock audio comes before Azure Speech
+
+**Decision:** Milestone 5 creates local mock WAV audio using the Python standard
+library before adding Azure Speech.
+
+**Reason:** The listening page, segment ordering, audio metadata, and playback
+controls can be tested without paid credentials or vendor-specific failures.
+Mock audio is not the final narration; it is a safe development stand-in.
+
 ## Azure Speech is planned behind a provider
 
 **Decision:** Later provide both mock speech and Azure Speech implementations,

@@ -337,11 +337,39 @@ The new `/books/<book-id>` page translates these internal states into ordinary
 language, shows page progress and saved text, and offers one-page retry controls.
 If a development server stops mid-job, it offers **Continue preparing text**.
 
-## 15. What comes next
+## 15. What milestone 5 added
 
-Milestone 5 should split saved page text into safe ordered segments, create mock
-audio, and build the first listening route. It should not add paid Azure speech,
-authentication, cloud storage, or advanced page correction yet.
+Echo can now turn prepared page text into playable local mock audio:
+
+```text
+text_ready book
+→ text segments
+→ mock WAV files
+→ /books/<book-id>/listen
+→ ready
+```
+
+A segment is a smaller ordered piece of text that is safe to send to speech
+generation later. In milestone 5, each segment keeps its source text and source
+page link. This preserves provenance: Echo can tell which page produced which
+piece of audio.
+
+The mock TTS provider creates simple local WAV files using Python's standard
+library. This is not Cantonese narration yet. It exists so the listening
+experience can be built and tested before adding Azure credentials, real voice
+selection, cloud storage, or cost.
+
+The listening page uses the browser's native audio player. It adds previous and
+next segment buttons, playback speed, and local browser progress. This progress
+is intentionally local-only; account-backed listening progress belongs later
+with authentication and Supabase.
+
+## 16. What comes next
+
+Milestone 6 should replace the mock audio provider with Azure Speech for real
+Hong Kong Cantonese audio while keeping mock mode available for local
+development. It should not add Supabase, translation, graph search, or advanced
+learning features.
 
 The central idea to preserve is:
 

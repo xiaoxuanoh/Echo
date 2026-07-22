@@ -14,7 +14,7 @@ Before making changes:
 While working:
 
 - Keep work limited to the current request and milestone.
-- Treat milestones 1 through 4 as complete. Do not start milestone 5 or later work
+- Treat milestones 1 through 5 as complete. Do not start milestone 6 or later work
   without an explicit user request and an approved micro-plan.
 - Preserve Echo's current MVP scope while recognizing the long-term product as
   a multilingual document and knowledge platform.

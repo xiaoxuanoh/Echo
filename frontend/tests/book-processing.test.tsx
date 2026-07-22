@@ -14,6 +14,7 @@ const uploadedBook = {
   error_message: null,
   completed_pages: 0,
   failed_pages: 0,
+  audio_segment_count: 0,
   processing_active: false,
   pages: [
     {
@@ -86,7 +87,9 @@ describe("book text preparation", () => {
     expect(await screen.findByText("Page text ready")).toBeVisible();
     expect(screen.getByText("1 of 1 pages ready")).toBeVisible();
     expect(
-      screen.getByText("All page text is prepared. Audio comes in the next milestones."),
+      screen.getByText(
+        "All page text is prepared. You can now create local mock audio.",
+      ),
     ).toBeVisible();
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(fetchMock.mock.calls[1][0]).toContain("/process-text");
