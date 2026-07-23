@@ -30,7 +30,12 @@ While working:
 - Preserve unrelated user changes.
 - Verify proportionally to risk using the Verification Budget below and report
   anything not tested.
-- Update `tasks/SESSION_LOG.md` after meaningful work.
+- Do not automatically update project-management documents such as
+  `tasks/SESSION_LOG.md`, TODO lists, milestone notes, progress logs, or
+  changelogs. Complete the engineering task first and summarize changes in the
+  final report. Update these documents only when the user explicitly requests
+  it, approves it after task completion, or maintaining that document is the
+  approved task itself.
 - Keep the documented local port pair consistent: frontend 3001 and backend
   8001, unless the user explicitly chooses different ports.
 - Give concise completion reports: what changed, files touched, commands run,
