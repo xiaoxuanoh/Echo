@@ -4,8 +4,15 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
+from app.core.config import Settings
+from app.main import create_app
 from app.models.books import BookPageRecord
 from app.services.book_metadata import LocalBookMetadataService
+from app.services.tts import (
+    AzureSpeechTtsProvider,
+    MockTtsProvider,
+    create_tts_provider,
+)
 from app.services.text_segmentation import TextSegmentationService
 from tests.conftest import make_pdf
 
@@ -67,6 +74,55 @@ def test_prepares_mock_audio_for_text_ready_book(
     assert saved.status == "ready"
     assert saved.audio_segments[0].audio_storage_path == "audio/segment-0001.wav"
     assert (storage_path / upload["book_id"] / "audio" / "segment-0001.wav").exists()
+
+
+def test_tts_factory_keeps_mock_mode_as_default(storage_path: Path) -> None:
+    settings = Settings(local_storage_path=storage_path)
+
+    provider = create_tts_provider(settings)
+
+    assert isinstance(provider, MockTtsProvider)
+
+
+def test_tts_factory_selects_azure_when_mock_mode_is_disabled(
+    storage_path: Path,
+) -> None:
+    settings = Settings(
+        local_storage_path=storage_path,
+        use_mock_tts=False,
+        azure_speech_key="test-key",
+        azure_speech_region="eastus",
+        azure_speech_voice="zh-HK-HiuMaanNeural",
+    )
+
+    provider = create_tts_provider(settings)
+
+    assert isinstance(provider, AzureSpeechTtsProvider)
+
+
+def test_azure_mode_reports_missing_configuration(storage_path: Path) -> None:
+    settings = Settings(local_storage_path=storage_path, use_mock_tts=False)
+    with TestClient(create_app(settings)) as real_tts_client:
+        upload = real_tts_client.post(
+            "/api/books/pdf",
+            files={
+                "file": (
+                    "digital.pdf",
+                    make_pdf(["Text ready, but Azure is not configured."]),
+                    "application/pdf",
+                )
+            },
+        ).json()
+        real_tts_client.post(f"/api/books/{upload['book_id']}/process-text")
+
+        response = real_tts_client.post(f"/api/books/{upload['book_id']}/prepare-audio")
+
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "tts_configuration_missing"
+    assert response.json()["error"]["details"]["missing"] == [
+        "AZURE_SPEECH_KEY",
+        "AZURE_SPEECH_REGION",
+    ]
 
 
 def test_returns_mock_audio_file(client: TestClient) -> None:

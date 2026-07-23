@@ -7,21 +7,21 @@ from app.core.errors import EchoError
 from app.models.books import AudioSegmentRecord, BookRecord
 from app.services.book_metadata import LocalBookMetadataService
 from app.services.text_segmentation import TextSegmentationService
-from app.services.tts import MockTtsProvider
+from app.services.tts import MockTtsProvider, TtsProvider
 
 
 logger = logging.getLogger(__name__)
 
 
 class BookAudioProcessingService:
-    """Creates ordered mock audio segments from prepared page text."""
+    """Creates ordered audio segments from prepared page text."""
 
     def __init__(
         self,
         *,
         storage_root: Path,
         max_segment_characters: int,
-        tts_provider: MockTtsProvider | None = None,
+        tts_provider: TtsProvider | None = None,
         metadata: LocalBookMetadataService | None = None,
     ) -> None:
         self.storage_root = storage_root
@@ -122,7 +122,7 @@ class BookAudioProcessingService:
                 segment.processing_status = "failed"
                 segment.error_message = "Echo could not create audio for this segment."
                 logger.exception(
-                    "Unexpected mock audio failure for book %s segment %s",
+                    "Unexpected audio failure for book %s segment %s",
                     book.id,
                     segment.segment_number,
                 )

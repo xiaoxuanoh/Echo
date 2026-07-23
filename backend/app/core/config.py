@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     local_storage_path: Path = Path("./data")
     use_mock_ocr: bool = True
     use_mock_tts: bool = True
+    azure_speech_key: str = ""
+    azure_speech_region: str = ""
+    azure_speech_voice: str = "zh-HK-HiuMaanNeural"
     ocr_enabled: bool = False
     ocr_text_detection_model: str = "PP-OCRv5_mobile_det"
     ocr_text_recognition_model: str = "PP-OCRv5_mobile_rec"

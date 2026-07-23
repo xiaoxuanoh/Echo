@@ -42,6 +42,7 @@ from app.services.image_processing import ImageProcessingService
 from app.services.ocr import create_ocr_provider
 from app.services.pdf_processing import PdfProcessingService
 from app.services.storage import LocalStorageService
+from app.services.tts import create_tts_provider
 
 
 router = APIRouter(prefix="/api/books", tags=["books"])
@@ -75,15 +76,10 @@ def _processing_service(request: Request) -> BookTextProcessingService:
 
 def _audio_processing_service(request: Request) -> BookAudioProcessingService:
     settings = request.app.state.settings
-    if not settings.use_mock_tts:
-        raise EchoError(
-            "tts_not_configured",
-            "Mock audio is disabled, and real speech is not configured yet.",
-            status_code=501,
-        )
     return BookAudioProcessingService(
         storage_root=settings.local_storage_path,
         max_segment_characters=settings.tts_segment_max_characters,
+        tts_provider=create_tts_provider(settings),
     )
 
 
