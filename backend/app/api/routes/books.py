@@ -554,7 +554,8 @@ def get_audio_file(
             "Echo could not find the local audio file.",
             status_code=404,
         )
-    return FileResponse(audio_path, media_type="audio/wav", filename=audio_path.name)
+    media_type = "audio/mpeg" if audio_path.suffix == ".mp3" else "audio/wav"
+    return FileResponse(audio_path, media_type=media_type, filename=audio_path.name)
 
 
 @router.post(

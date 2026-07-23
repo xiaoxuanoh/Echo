@@ -9,8 +9,9 @@ ordered page model before text recognition and speech generation.
 
 ## Current milestone
 
-Milestone 5 is complete. Echo can now prepare page text, split it into ordered
-segments, create local mock audio, and play it in the browser:
+Milestone 6 is complete in local code. Echo can now prepare page text, split it
+into ordered segments, create local mock audio by default, or create real Hong
+Kong Cantonese audio when Azure Speech is configured:
 
 - a calm landing page and `/books/new` workflow;
 - PDF upload, validation, page counting, and all-page classification;
@@ -28,17 +29,15 @@ segments, create local mock audio, and play it in the browser:
 - a temporary book-detail page with progress, extracted-text review, and retry;
 - safe text segmentation that keeps source page links;
 - local mock WAV audio generation for free development playback;
+- Azure Speech generation behind the same TTS provider boundary;
 - a first `/books/<book-id>/listen` page with native audio controls;
 - previous/next segment controls, playback speed, and browser-saved progress;
 - safe resume behavior that skips completed pages after an interrupted local job;
 - CPU-friendly PP-OCRv5 mobile models stored in an ignored local cache;
 - structured errors, upload safeguards, and automated tests.
 
-Real Azure audio generation, accounts, Supabase, and deployment are not part of
-the completed milestones.
-
-The next planned step is milestone 6: integrate Azure Speech for real Hong Kong
-Cantonese audio while keeping mock mode available.
+Accounts, Supabase, cloud storage, and deployment are not part of the completed
+milestones.
 
 ## Core user flow
 
@@ -46,7 +45,7 @@ Cantonese audio while keeping mock mode available.
 Upload a PDF or page photos
 → prepare an ordered collection of pages
 → extract and save Traditional Chinese text
-→ create local mock audio
+→ create mock or Azure Cantonese audio
 → listen to the book
 ```
 
@@ -143,6 +142,14 @@ OCR_TEXT_RECOGNITION_MODEL=PP-OCRv5_mobile_rec
 OCR_MAX_IMAGE_SIDE=2000
 OCR_MODEL_CACHE_PATH=./data/models/paddlex
 USE_MOCK_TTS=true
+TTS_PROVIDER=azure
+AZURE_SPEECH_KEY=
+AZURE_SPEECH_REGION=
+AZURE_SPEECH_VOICE=zh-HK-HiuMaanNeural
+ELEVENLABS_API_KEY=
+ELEVENLABS_VOICE_ID=
+ELEVENLABS_MODEL_ID=eleven_multilingual_v2
+ELEVENLABS_OUTPUT_FORMAT=mp3_44100_128
 TTS_SEGMENT_MAX_CHARACTERS=900
 ```
 
@@ -150,6 +157,30 @@ These are development safeguards, not permanent product limits. If the backend
 is started from `backend/`, uploads remain in `backend/data/<book-id>/` so they
 can be inspected. Each directory contains a human-readable `book.json`. This
 storage is temporary and not suitable for long-term use.
+
+To try real Cantonese audio, create an Azure Speech resource, then set:
+
+```dotenv
+USE_MOCK_TTS=false
+AZURE_SPEECH_KEY=<your key>
+AZURE_SPEECH_REGION=<your resource region>
+AZURE_SPEECH_VOICE=zh-HK-HiuMaanNeural
+```
+
+Restart the backend after changing these values. Leave `USE_MOCK_TTS=true` for
+free local development without Azure credentials.
+
+To try ElevenLabs instead, create a Text to Speech API key and choose a voice
+ID, then set:
+
+```dotenv
+USE_MOCK_TTS=false
+TTS_PROVIDER=elevenlabs
+ELEVENLABS_API_KEY=<your key>
+ELEVENLABS_VOICE_ID=<your voice id>
+ELEVENLABS_MODEL_ID=eleven_multilingual_v2
+ELEVENLABS_OUTPUT_FORMAT=mp3_44100_128
+```
 
 ## Testing commands
 
@@ -208,11 +239,12 @@ POST /api/books/<book-id>/pages/<page-number>/retry-text
 If the backend stops during preparation, restart it and use **Continue preparing
 text**. Completed pages are skipped. A failed page can be retried separately.
 
-## Mock listening
+## Listening audio
 
 When a book shows `Page text ready`, open `/books/<book-id>/listen` and choose
-**Create listening audio**. Echo splits saved page text into ordered segments,
-creates local mock WAV files, and then shows a browser audio player.
+**Create listening audio**. Echo splits saved page text into ordered segments
+and creates WAV files using either the mock provider or Azure Speech, depending
+on `USE_MOCK_TTS`.
 
 The local API endpoints are:
 
@@ -233,8 +265,9 @@ This is not user-account storage yet.
   reading order is correct.
 - A photographed facing page can introduce stray recognized text. Automatic
   two-page splitting and advanced cropping remain postponed.
-- Audio is mock WAV output only. Real Hong Kong Cantonese speech is planned for
-  milestone 6.
+- Real Azure Speech requires an Azure account, a key, and a region. Automated
+  tests cover provider selection and missing-configuration errors, but live
+  synthesis requires real credentials.
 - Local book/page metadata is saved in JSON, not a database. A temporary
   book-detail API exists, but there is no book library yet.
 - Successfully processed uploads are not removed automatically.

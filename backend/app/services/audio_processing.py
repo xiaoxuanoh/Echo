@@ -110,7 +110,10 @@ class BookAudioProcessingService:
             self.metadata.save(self.book_directory(book.id), book)
 
             try:
-                filename = f"segment-{segment.segment_number:04d}.wav"
+                filename = (
+                    f"segment-{segment.segment_number:04d}."
+                    f"{self.tts_provider.audio_file_extension}"
+                )
                 duration = self.tts_provider.synthesize(
                     segment.source_text,
                     audio_directory / filename,

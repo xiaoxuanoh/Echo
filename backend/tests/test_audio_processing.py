@@ -10,6 +10,7 @@ from app.models.books import BookPageRecord
 from app.services.book_metadata import LocalBookMetadataService
 from app.services.tts import (
     AzureSpeechTtsProvider,
+    ElevenLabsTtsProvider,
     MockTtsProvider,
     create_tts_provider,
 )
@@ -98,6 +99,53 @@ def test_tts_factory_selects_azure_when_mock_mode_is_disabled(
     provider = create_tts_provider(settings)
 
     assert isinstance(provider, AzureSpeechTtsProvider)
+
+
+def test_tts_factory_selects_elevenlabs_when_configured(
+    storage_path: Path,
+) -> None:
+    settings = Settings(
+        local_storage_path=storage_path,
+        use_mock_tts=False,
+        tts_provider="elevenlabs",
+        elevenlabs_api_key="test-key",
+        elevenlabs_voice_id="test-voice",
+    )
+
+    provider = create_tts_provider(settings)
+
+    assert isinstance(provider, ElevenLabsTtsProvider)
+    assert provider.audio_file_extension == "mp3"
+
+
+def test_elevenlabs_mode_reports_missing_configuration(storage_path: Path) -> None:
+    settings = Settings(
+        local_storage_path=storage_path,
+        use_mock_tts=False,
+        tts_provider="elevenlabs",
+    )
+
+    with TestClient(create_app(settings)) as real_tts_client:
+        upload = real_tts_client.post(
+            "/api/books/pdf",
+            files={
+                "file": (
+                    "digital.pdf",
+                    make_pdf(["Text ready, but ElevenLabs is not configured."]),
+                    "application/pdf",
+                )
+            },
+        ).json()
+        real_tts_client.post(f"/api/books/{upload['book_id']}/process-text")
+
+        response = real_tts_client.post(f"/api/books/{upload['book_id']}/prepare-audio")
+
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "tts_configuration_missing"
+    assert response.json()["error"]["details"]["missing"] == [
+        "ELEVENLABS_API_KEY",
+        "ELEVENLABS_VOICE_ID",
+    ]
 
 
 def test_azure_mode_reports_missing_configuration(storage_path: Path) -> None:

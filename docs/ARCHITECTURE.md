@@ -213,17 +213,23 @@ unfinished page.
 ## Narration and speech flow
 
 Milestone 5 divides page text into safe ordered segments. Each audio record
-retains its source text and source page. A mock provider creates local WAV files
-so the listening page can be tested without paid speech credentials.
+retains its source text and source page.
 
-Milestone 6 will add Azure Speech. The initial real voice target is Hong Kong
-Cantonese with a configurable `zh-HK` voice, but the architecture should keep
-voice, locale, narration, and audio asset relationships explicit enough to
-support additional languages later.
+Milestone 6 adds a TTS provider boundary with three implementations:
+
+- a mock provider that creates local WAV files for free development;
+- an Azure Speech provider for real speech with a configurable Hong Kong
+  Cantonese voice;
+- an ElevenLabs provider for real speech experiments with a configurable voice
+  ID.
+
+The initial real voice target is Hong Kong Cantonese with a configurable `zh-HK`
+voice, but the architecture should keep voice, locale, narration, and audio
+asset relationships explicit enough to support additional languages later.
 
 ## Storage model
 
-Milestones 2 through 5 use:
+Milestones 2 through 6 use:
 
 ```text
 backend/data/<book-id>/
@@ -231,7 +237,7 @@ backend/data/<book-id>/
 ├── source.pdf                 # PDF flow
 ├── originals/                 # original photo uploads, image flow
 ├── pages/                     # normalized photos or rendered PDF pages
-└── audio/                     # generated mock audio segments
+└── audio/                     # generated mock or Azure audio segments
 ```
 
 Embedded-text PDF pages can have no processing image. Photo pages and scanned
