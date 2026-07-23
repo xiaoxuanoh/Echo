@@ -364,12 +364,25 @@ next segment buttons, playback speed, and local browser progress. This progress
 is intentionally local-only; account-backed listening progress belongs later
 with authentication and Supabase.
 
-## 16. What comes next
+## 16. What milestone 6 added
 
-Milestone 6 should replace the mock audio provider with Azure Speech for real
-Hong Kong Cantonese audio while keeping mock mode available for local
-development. It should not add Supabase, translation, graph search, or advanced
+Echo now has two text-to-speech providers behind the same service boundary:
+
+```text
+prepared text segment
+→ TTS provider
+   ├─ mock WAV tone for free local development
+   └─ Azure Speech WAV for real Hong Kong Cantonese audio
+```
+
+Mock mode remains the default because it works without paid credentials. To use
+real speech, set `USE_MOCK_TTS=false` and provide Azure Speech key, region, and
+voice values in `backend/.env`.
+
+Milestone 6 did not add Supabase, translation, graph search, or advanced
 learning features.
+
+## 17. What comes next
 
 The central idea to preserve is:
 

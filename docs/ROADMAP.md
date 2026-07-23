@@ -2,11 +2,11 @@
 
 ## Current position
 
-Milestones 1 through 5 are complete. A real Traditional Chinese JPEG page was
+Milestones 1 through 6 are complete. A real Traditional Chinese JPEG page was
 manually verified through upload, shared-page preparation, and one-page
 PaddleOCR evaluation. Whole-book orchestration and retry behavior are covered
-with automated local tests. Mock listening is covered with local tests.
-Milestone 6 is next.
+with automated local tests. Mock listening and Azure Speech provider selection
+are covered with local tests.
 
 ## Milestone 1 — Local upload foundation (complete)
 
@@ -47,10 +47,11 @@ No OCR is run in this milestone.
 - first listening route and native audio player
 - previous/next segment controls, playback speed, and browser-saved progress
 
-## Milestone 6 — Cantonese audio (next)
+## Milestone 6 — Cantonese audio (complete)
 
 - Azure Speech provider with configurable `zh-HK` voice
 - ordered real audio segments and metadata
+- mock TTS remains the default local fallback
 
 ## Milestone 7 — Library and progress
 

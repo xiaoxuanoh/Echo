@@ -133,13 +133,18 @@ library before adding Azure Speech.
 controls can be tested without paid credentials or vendor-specific failures.
 Mock audio is not the final narration; it is a safe development stand-in.
 
-## Azure Speech is planned behind a provider
+## Azure Speech is behind a provider
 
-**Decision:** Later provide both mock speech and Azure Speech implementations,
-with a configurable Hong Kong Cantonese voice.
+**Decision:** Milestone 6 provides both mock speech and Azure Speech
+implementations behind one TTS provider boundary, with
+`zh-HK-HiuMaanNeural` as the default Hong Kong Cantonese voice.
 
 **Reason:** Local development must work without paid credentials, and speech
 vendors should not leak into page or playback code.
+
+**Alternative considered:** Replace mock audio completely with Azure Speech.
+That was rejected because it would make basic local development depend on paid
+credentials and network access.
 
 ## Supabase is postponed
 
