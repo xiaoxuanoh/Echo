@@ -80,6 +80,27 @@ def test_segments_merge_visual_pdf_line_breaks_before_audio() -> None:
     ]
 
 
+def test_segments_normalize_cjk_radicals_before_audio() -> None:
+    now = datetime.now(UTC)
+    book_id = uuid4()
+    page_id = uuid4()
+    page = BookPageRecord(
+        id=page_id,
+        book_id=book_id,
+        page_number=1,
+        extraction_method="embedded_text",
+        extracted_text="⽅⾯擁有 ⻑期經驗",
+        processing_status="completed",
+        created_at=now,
+        updated_at=now,
+    )
+    service = TextSegmentationService(max_characters=300)
+
+    segments = service.segment_pages([page])
+
+    assert [segment.source_text for segment in segments] == ["方面擁有長期經驗"]
+
+
 def test_prepares_mock_audio_for_text_ready_book(
     client: TestClient,
     storage_path: Path,

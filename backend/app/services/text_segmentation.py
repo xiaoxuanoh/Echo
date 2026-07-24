@@ -1,7 +1,12 @@
 from dataclasses import dataclass
+import unicodedata
 from uuid import UUID
 
 from app.models.books import BookPageRecord
+
+CJK_RADICAL_REPLACEMENTS = {
+    "⻑": "長",
+}
 
 
 @dataclass(frozen=True)
@@ -34,7 +39,7 @@ class TextSegmentationService:
         return segments
 
     def _split_text(self, text: str) -> list[str]:
-        paragraphs = self._normalize_paragraphs(text)
+        paragraphs = self._normalize_paragraphs(self._normalize_cjk_lookalikes(text))
         chunks: list[str] = []
         current = ""
 
@@ -83,6 +88,26 @@ class TextSegmentationService:
         return self._merge_broken_cjk_fragments(
             [self._remove_cjk_whitespace(paragraph) for paragraph in paragraphs]
         )
+
+    def _normalize_cjk_lookalikes(self, text: str) -> str:
+        output = []
+        for character in text:
+            replacement = CJK_RADICAL_REPLACEMENTS.get(character)
+            if replacement is not None:
+                output.append(replacement)
+                continue
+
+            code_point = ord(character)
+            if (
+                0x2E80 <= code_point <= 0x2EFF
+                or 0x2F00 <= code_point <= 0x2FDF
+                or 0xF900 <= code_point <= 0xFAFF
+            ):
+                output.append(unicodedata.normalize("NFKC", character))
+                continue
+
+            output.append(character)
+        return "".join(output)
 
     def _join_visual_lines(self, lines: list[str]) -> str:
         if not lines:
@@ -163,7 +188,9 @@ class TextSegmentationService:
             return False
         code_point = ord(character)
         return (
-            0x3400 <= code_point <= 0x4DBF
+            0x2E80 <= code_point <= 0x2EFF
+            or 0x2F00 <= code_point <= 0x2FDF
+            or 0x3400 <= code_point <= 0x4DBF
             or 0x4E00 <= code_point <= 0x9FFF
             or 0xF900 <= code_point <= 0xFAFF
         )
