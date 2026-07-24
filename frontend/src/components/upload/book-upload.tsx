@@ -383,9 +383,7 @@ export function BookUpload({
       )}
 
       <fieldset className="mb-6">
-        <legend className="font-semibold">
-          Choose how you&apos;d like to listen to this document.
-        </legend>
+        <legend className="font-semibold">Listening language</legend>
         <div className="mt-3 grid gap-2 sm:grid-cols-3" aria-label="Listening language">
           {listeningLanguages.map((option) => (
             <button
