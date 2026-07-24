@@ -192,6 +192,21 @@ describe("book library", () => {
     expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: "PATCH" });
   });
 
+  it("keeps recording rename controls interactive inside a clickable card", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ folders: [readyFolder] }));
+
+    render(<BookLibrary />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "ready.pdf actions" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename recording" }));
+    const input = screen.getByLabelText("Recording name");
+    fireEvent.click(input);
+    fireEvent.change(input, { target: { value: "Renamed audio" } });
+
+    expect(input).toHaveValue("Renamed audio");
+    expect(screen.getByRole("button", { name: "Save name" })).toBeEnabled();
+  });
+
   it("removes a selected book folder from the actions menu", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock
