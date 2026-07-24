@@ -16,6 +16,7 @@ def storage_path(tmp_path: Path) -> Path:
 @pytest.fixture
 def client(storage_path: Path) -> Iterator[TestClient]:
     settings = Settings(
+        _env_file=None,
         local_storage_path=storage_path,
         max_pdf_size_mb=1,
         max_image_size_mb=1,

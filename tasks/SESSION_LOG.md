@@ -370,3 +370,109 @@ Review Milestone 5 locally by preparing a text-ready book, opening
 `/books/<book-id>/listen`, creating mock audio, and playing the generated
 segments. If accepted, commit and push Milestone 5 before planning Milestone 6
 Azure Speech.
+
+## 2026-07-22 — Milestone 6 Azure Cantonese audio
+
+### Task
+
+Add real Hong Kong Cantonese speech generation while keeping mock TTS available
+for local development.
+
+### Implementation summary
+
+- Added Azure Speech SDK as a backend dependency.
+- Added Azure Speech settings for key, region, and configurable voice.
+- Added a typed TTS provider boundary with mock and Azure implementations.
+- Kept mock TTS as the default when `USE_MOCK_TTS=true`.
+- Updated audio preparation to select the provider from settings.
+- Kept generated audio as WAV files so the existing audio endpoint and frontend
+  player continue to work.
+- Added clear backend errors when real speech is selected without required Azure
+  key or region.
+- Kept Supabase, authentication, cloud storage, deployment, translation, graph
+  infrastructure, and synchronized text highlighting out of this milestone.
+
+### Files changed
+
+- Backend: settings, TTS provider, audio orchestration, book routes, dependency
+  list, environment example, and audio processing tests.
+- Documentation: README, architecture, decisions, roadmap, lesson, and this log.
+
+### Tests run and results
+
+- Focused backend audio tests: 7 passed; the existing FastAPI/Starlette
+  TestClient deprecation warning remains.
+- Backend Ruff check: passed.
+- Azure Speech SDK import check: passed with version 1.50.0.
+
+### Not manually verified
+
+- Live Azure synthesis was not tested because no real Azure Speech credentials
+  were provided during this turn.
+- Frontend tests/build were not rerun because Milestone 6 did not change
+  frontend code.
+
+### Known issues
+
+- Real speech generation depends on Azure account credentials and network
+  access.
+- Invalid Azure credentials or provider-side failures are still handled as
+  segment-generation failures in the local background task flow.
+- Local JSON and WAV files remain development storage, not production
+  persistence.
+
+### Next recommended step
+
+Configure a real Azure Speech key and region in `backend/.env`, set
+`USE_MOCK_TTS=false`, restart the backend, and test one short text-ready book.
+If accepted, commit and push Milestone 6 before planning Milestone 7.
+
+## 2026-07-23 — ElevenLabs local TTS test provider
+
+### Task
+
+Add a narrow backend-only ElevenLabs provider so Milestone 6's real-audio path
+can be tested locally while Azure account authentication is blocked.
+
+### Implementation summary
+
+- Added `TTS_PROVIDER=elevenlabs` configuration while preserving mock TTS as the
+  default and Azure as the existing real provider.
+- Added an ElevenLabs TTS provider using the Python standard library HTTP
+  client, so no new dependency was added.
+- Saved ElevenLabs output as MP3 segments and returned the matching media type
+  from the existing audio-file endpoint.
+- Updated local environment documentation for ElevenLabs API key, voice ID,
+  model ID, and output format.
+
+## 2026-07-24 — Handoff note: pending CJK text normalization fix
+
+### Current state
+
+- Edge TTS has replaced the local ElevenLabs test provider for real speech
+  testing.
+- Generated audio now plays real Mandarin speech instead of the mock tone.
+- Text normalization has improved PDF visual line-break handling, but one
+  remaining artifact persists in extracted Chinese text:
+  `⽅⾯擁有 ⻑期經驗`.
+
+### Pending fix
+
+- Extend `TextSegmentationService._is_cjk()` in
+  `backend/app/services/text_segmentation.py` so it treats CJK radical and
+  Kangxi radical code-point ranges as CJK:
+  - `U+2E80-U+2EFF`
+  - `U+2F00-U+2FDF`
+- Keep the existing CJK ranges:
+  - `U+3400-U+4DBF`
+  - `U+4E00-U+9FFF`
+  - `U+F900-U+FAFF`
+- Add a focused test for:
+  `⽅⾯擁有 ⻑期經驗` -> `⽅⾯擁有⻑期經驗`.
+
+### Important context
+
+- Do not automatically update project-management docs except when explicitly
+  requested.
+- `tasks/SESSION_LOG.md` already had uncommitted changes before this handoff
+  note.

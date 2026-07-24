@@ -18,10 +18,7 @@ class Settings(BaseSettings):
     azure_speech_key: str = ""
     azure_speech_region: str = ""
     azure_speech_voice: str = "zh-HK-HiuMaanNeural"
-    elevenlabs_api_key: str = ""
-    elevenlabs_voice_id: str = ""
-    elevenlabs_model_id: str = "eleven_multilingual_v2"
-    elevenlabs_output_format: str = "mp3_44100_128"
+    edge_tts_voice: str = "zh-CN-XiaoxiaoNeural"
     ocr_enabled: bool = False
     ocr_text_detection_model: str = "PP-OCRv5_mobile_det"
     ocr_text_recognition_model: str = "PP-OCRv5_mobile_rec"

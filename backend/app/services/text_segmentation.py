@@ -34,7 +34,7 @@ class TextSegmentationService:
         return segments
 
     def _split_text(self, text: str) -> list[str]:
-        paragraphs = [item.strip() for item in text.splitlines() if item.strip()]
+        paragraphs = self._normalize_paragraphs(text)
         chunks: list[str] = []
         current = ""
 
@@ -53,6 +53,120 @@ class TextSegmentationService:
         if current:
             chunks.append(current)
         return chunks
+
+    def _normalize_paragraphs(self, text: str) -> list[str]:
+        paragraphs: list[str] = []
+        current_lines: list[str] = []
+
+        for line in text.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                if current_lines:
+                    paragraphs.append(self._join_visual_lines(current_lines))
+                    current_lines = []
+                continue
+
+            if self._is_probable_heading(stripped):
+                if current_lines:
+                    paragraphs.append(self._join_visual_lines(current_lines))
+                    current_lines = []
+                paragraphs.append(stripped)
+            else:
+                current_lines.append(stripped)
+
+        if current_lines:
+            paragraphs.append(self._join_visual_lines(current_lines))
+
+        if not paragraphs and text.strip():
+            paragraphs.append(text.strip())
+
+        return self._merge_broken_cjk_fragments(
+            [self._remove_cjk_whitespace(paragraph) for paragraph in paragraphs]
+        )
+
+    def _join_visual_lines(self, lines: list[str]) -> str:
+        if not lines:
+            return ""
+
+        text = lines[0]
+        for line in lines[1:]:
+            separator = "" if self._should_join_without_space(text, line) else " "
+            text = f"{text}{separator}{line}"
+        return text
+
+    def _should_join_without_space(self, previous: str, next_line: str) -> bool:
+        previous_character = previous.rstrip()[-1:]
+        next_character = next_line.lstrip()[:1]
+        return self._is_cjk(previous_character) and self._is_cjk(next_character)
+
+    def _remove_cjk_whitespace(self, text: str) -> str:
+        output = []
+        index = 0
+        while index < len(text):
+            character = text[index]
+            if character.isspace():
+                previous_character = output[-1] if output else ""
+                next_character = self._next_non_space_character(text, index + 1)
+                if self._is_cjk(previous_character) and self._is_cjk(next_character):
+                    index += 1
+                    continue
+                output.append(" ")
+                index += 1
+                continue
+            output.append(character)
+            index += 1
+        return "".join(output)
+
+    def _merge_broken_cjk_fragments(self, paragraphs: list[str]) -> list[str]:
+        merged: list[str] = []
+        for paragraph in paragraphs:
+            if (
+                merged
+                and self._is_short_cjk_fragment(paragraph)
+                and self._can_merge_with_previous_paragraph(merged[-1], paragraph)
+            ):
+                merged[-1] = f"{merged[-1]}{paragraph}"
+            else:
+                merged.append(paragraph)
+        return merged
+
+    def _is_short_cjk_fragment(self, text: str) -> bool:
+        cjk_count = sum(self._is_cjk(character) for character in text)
+        return 0 < cjk_count <= 8 and cjk_count >= len(text.strip()) / 2
+
+    def _can_merge_with_previous_paragraph(self, previous: str, next_paragraph: str) -> bool:
+        if self._is_probable_heading(previous):
+            return False
+        previous_character = previous.rstrip()[-1:]
+        next_character = next_paragraph.lstrip()[:1]
+        if not (self._is_cjk(previous_character) and self._is_cjk(next_character)):
+            return False
+        return previous_character not in "。！？!?"
+
+    def _next_non_space_character(self, text: str, start: int) -> str:
+        for character in text[start:]:
+            if not character.isspace():
+                return character
+        return ""
+
+    def _is_probable_heading(self, line: str) -> bool:
+        if len(line) > 40:
+            return False
+        if line[-1:] in "。！？!?；;，,、：:":
+            return False
+        if line.startswith(("「", "《")):
+            return True
+        return False
+
+    def _is_cjk(self, character: str) -> bool:
+        if not character:
+            return False
+        code_point = ord(character)
+        return (
+            0x3400 <= code_point <= 0x4DBF
+            or 0x4E00 <= code_point <= 0x9FFF
+            or 0xF900 <= code_point <= 0xFAFF
+        )
 
     def _split_long_piece(self, text: str) -> list[str]:
         if len(text) <= self.max_characters:

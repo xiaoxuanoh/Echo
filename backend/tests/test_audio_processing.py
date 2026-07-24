@@ -10,7 +10,7 @@ from app.models.books import BookPageRecord
 from app.services.book_metadata import LocalBookMetadataService
 from app.services.tts import (
     AzureSpeechTtsProvider,
-    ElevenLabsTtsProvider,
+    EdgeTtsProvider,
     MockTtsProvider,
     create_tts_provider,
 )
@@ -41,6 +41,43 @@ def test_segments_text_without_exceeding_limit() -> None:
     assert " ".join(segment.source_text for segment in segments).replace(
         "  ", " "
     ) == "First sentence. Second sentence. Third sentence."
+
+
+def test_segments_merge_visual_pdf_line_breaks_before_audio() -> None:
+    now = datetime.now(UTC)
+    book_id = uuid4()
+    page_id = uuid4()
+    page = BookPageRecord(
+        id=page_id,
+        book_id=book_id,
+        page_number=1,
+        extraction_method="embedded_text",
+        extracted_text=(
+            "「進可攻、退可守」的期權實戰配置\n"
+            "想像一下，你是一個在香港生活的上班族，儘管在參與股票買賣方面擁有 \n"
+            "長期經驗或偶然只會跟着市場趨勢買賣股票，但因為大部分時間都是高買\n"
+            "\n"
+            "低賣，所以感覺很沮喪。\n"
+            "證券價格走勢而上落。）你心裏想：「如果我也能從這些機會中分一杯\n"
+            "\n"
+            "羹，那有多好！」"
+        ),
+        processing_status="completed",
+        created_at=now,
+        updated_at=now,
+    )
+    service = TextSegmentationService(max_characters=300)
+
+    segments = service.segment_pages([page])
+
+    assert [segment.source_text for segment in segments] == [
+        (
+            "「進可攻、退可守」的期權實戰配置\n\n"
+            "想像一下，你是一個在香港生活的上班族，儘管在參與股票買賣方面擁有"
+            "長期經驗或偶然只會跟着市場趨勢買賣股票，但因為大部分時間都是高買\n\n"
+            "低賣，所以感覺很沮喪。 證券價格走勢而上落。）你心裏想：「如果我也能從這些機會中分一杯羹，那有多好！」"
+        )
+    ]
 
 
 def test_prepares_mock_audio_for_text_ready_book(
@@ -78,7 +115,7 @@ def test_prepares_mock_audio_for_text_ready_book(
 
 
 def test_tts_factory_keeps_mock_mode_as_default(storage_path: Path) -> None:
-    settings = Settings(local_storage_path=storage_path)
+    settings = Settings(_env_file=None, local_storage_path=storage_path)
 
     provider = create_tts_provider(settings)
 
@@ -89,6 +126,7 @@ def test_tts_factory_selects_azure_when_mock_mode_is_disabled(
     storage_path: Path,
 ) -> None:
     settings = Settings(
+        _env_file=None,
         local_storage_path=storage_path,
         use_mock_tts=False,
         azure_speech_key="test-key",
@@ -101,55 +139,29 @@ def test_tts_factory_selects_azure_when_mock_mode_is_disabled(
     assert isinstance(provider, AzureSpeechTtsProvider)
 
 
-def test_tts_factory_selects_elevenlabs_when_configured(
+def test_tts_factory_selects_edge_when_configured(
     storage_path: Path,
 ) -> None:
     settings = Settings(
+        _env_file=None,
         local_storage_path=storage_path,
         use_mock_tts=False,
-        tts_provider="elevenlabs",
-        elevenlabs_api_key="test-key",
-        elevenlabs_voice_id="test-voice",
+        tts_provider="edge",
+        edge_tts_voice="zh-CN-XiaoxiaoNeural",
     )
 
     provider = create_tts_provider(settings)
 
-    assert isinstance(provider, ElevenLabsTtsProvider)
+    assert isinstance(provider, EdgeTtsProvider)
     assert provider.audio_file_extension == "mp3"
 
 
-def test_elevenlabs_mode_reports_missing_configuration(storage_path: Path) -> None:
+def test_azure_mode_reports_missing_configuration(storage_path: Path) -> None:
     settings = Settings(
+        _env_file=None,
         local_storage_path=storage_path,
         use_mock_tts=False,
-        tts_provider="elevenlabs",
     )
-
-    with TestClient(create_app(settings)) as real_tts_client:
-        upload = real_tts_client.post(
-            "/api/books/pdf",
-            files={
-                "file": (
-                    "digital.pdf",
-                    make_pdf(["Text ready, but ElevenLabs is not configured."]),
-                    "application/pdf",
-                )
-            },
-        ).json()
-        real_tts_client.post(f"/api/books/{upload['book_id']}/process-text")
-
-        response = real_tts_client.post(f"/api/books/{upload['book_id']}/prepare-audio")
-
-    assert response.status_code == 500
-    assert response.json()["error"]["code"] == "tts_configuration_missing"
-    assert response.json()["error"]["details"]["missing"] == [
-        "ELEVENLABS_API_KEY",
-        "ELEVENLABS_VOICE_ID",
-    ]
-
-
-def test_azure_mode_reports_missing_configuration(storage_path: Path) -> None:
-    settings = Settings(local_storage_path=storage_path, use_mock_tts=False)
     with TestClient(create_app(settings)) as real_tts_client:
         upload = real_tts_client.post(
             "/api/books/pdf",
