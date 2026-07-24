@@ -137,7 +137,13 @@ function SortablePage({
   );
 }
 
-function UploadResultCard({ result }: { result: UploadResult }) {
+function UploadResultCard({
+  result,
+  libraryBookTitle,
+}: {
+  result: UploadResult;
+  libraryBookTitle?: string;
+}) {
   return (
     <section
       className="mt-8 rounded-2xl border border-[#a9c5b3] bg-[#f4faf5] p-6"
@@ -146,7 +152,11 @@ function UploadResultCard({ result }: { result: UploadResult }) {
       <p className="text-sm font-bold tracking-wide text-[#376247] uppercase">
         Upload complete
       </p>
-      <h2 className="mt-2 text-2xl font-semibold">Your book pages are prepared</h2>
+      <h2 className="mt-2 text-2xl font-semibold">
+        {libraryBookTitle
+          ? "Your new recording is prepared"
+          : "Your book pages are prepared"}
+      </h2>
       <dl className="mt-5 grid gap-4 sm:grid-cols-2">
         <div>
           <dt className="text-sm text-muted">Pages</dt>
@@ -216,7 +226,13 @@ function UploadResultCard({ result }: { result: UploadResult }) {
   );
 }
 
-export function BookUpload() {
+export function BookUpload({
+  libraryBookId,
+  libraryBookTitle,
+}: {
+  libraryBookId?: string;
+  libraryBookTitle?: string;
+}) {
   const [mode, setMode] = useState<Mode>("pdf");
   const [pdf, setPdf] = useState<File | null>(null);
   const [images, setImages] = useState<PendingImage[]>([]);
@@ -325,8 +341,8 @@ export function BookUpload() {
     try {
       const uploadResult =
         mode === "pdf"
-          ? await uploadPdf(pdf as File)
-          : await uploadImages(images);
+          ? await uploadPdf(pdf as File, { libraryBookId })
+          : await uploadImages(images, { libraryBookId });
       setResult(uploadResult);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "The upload did not complete.");
@@ -337,6 +353,15 @@ export function BookUpload() {
 
   return (
     <div>
+      {libraryBookTitle && (
+        <div className="mb-6 rounded-2xl border border-[#b9d0da] bg-[#edf4f7] p-4">
+          <p className="text-sm font-bold tracking-wide text-accent uppercase">
+            Adding to library book
+          </p>
+          <p className="mt-1 text-lg font-semibold">{libraryBookTitle}</p>
+        </div>
+      )}
+
       <div
         className="grid gap-3 sm:grid-cols-2"
         role="group"
@@ -469,7 +494,9 @@ export function BookUpload() {
         {submitting ? "Preparing your book…" : "Prepare your book"}
       </button>
 
-      {result && <UploadResultCard result={result} />}
+      {result && (
+        <UploadResultCard result={result} libraryBookTitle={libraryBookTitle} />
+      )}
     </div>
   );
 }

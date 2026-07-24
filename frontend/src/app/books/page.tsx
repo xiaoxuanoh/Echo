@@ -22,7 +22,7 @@ export default function BooksPage() {
               href="/books/new"
               className="inline-flex min-h-12 items-center justify-center rounded-xl bg-accent px-5 font-semibold text-white hover:bg-accent-dark"
             >
-              Upload a book
+              Start a new book
             </Link>
             <Link
               href="/"

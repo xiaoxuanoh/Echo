@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BookUpload } from "@/components/upload/book-upload";
@@ -17,6 +17,7 @@ describe("page photo workflow", () => {
   });
 
   afterEach(() => {
+    cleanup();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
@@ -89,5 +90,36 @@ describe("page photo workflow", () => {
     expect(
       screen.getByRole("link", { name: "Continue preparing your book" }),
     ).toHaveAttribute("href", "/books/temporary-book-id");
+  });
+
+  it("submits a target library book when adding another recording", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          book_id: "new-recording-id",
+          source_type: "pdf",
+          total_pages: 1,
+          original_filename: "chapter-two.pdf",
+          classification: "text",
+          pages: [],
+          processing_status: "uploaded",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    render(<BookUpload libraryBookId="folder-id" libraryBookTitle="Ready book" />);
+
+    const pdf = new File(["pdf"], "chapter-two.pdf", { type: "application/pdf" });
+    fireEvent.change(screen.getByLabelText("Choose PDF"), {
+      target: { files: [pdf] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Prepare your book" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    const body = fetchMock.mock.calls[0][1]?.body as FormData;
+    expect(body.get("library_book_id")).toBe("folder-id");
+    expect(await screen.findByText("Your new recording is prepared")).toBeVisible();
+    expect(screen.getByText("Ready book")).toBeVisible();
   });
 });

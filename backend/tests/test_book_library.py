@@ -94,6 +94,45 @@ def test_groups_existing_same_title_uploads_as_recordings(
     }
 
 
+def test_uploads_pdf_recording_to_existing_library_book(
+    client: TestClient,
+    storage_path: Path,
+) -> None:
+    first = client.post(
+        "/api/books/pdf",
+        files={"file": ("book.pdf", make_pdf(["First text."]), "application/pdf")},
+    ).json()
+
+    second = client.post(
+        "/api/books/pdf",
+        data={"library_book_id": first["book_id"]},
+        files={
+            "file": ("chapter-two.pdf", make_pdf(["Second text."]), "application/pdf")
+        },
+    )
+
+    assert second.status_code == 200
+    saved = LocalBookMetadataService().load(storage_path / second.json()["book_id"])
+    assert str(saved.library_book_id) == first["book_id"]
+    assert saved.title == "book"
+    assert saved.recording_title == "chapter-two"
+    folder = client.get("/api/books").json()["folders"][0]
+    assert folder["id"] == first["book_id"]
+    assert folder["title"] == "book"
+    assert folder["recording_count"] == 2
+
+
+def test_upload_to_unknown_library_book_returns_not_found(client: TestClient) -> None:
+    response = client.post(
+        "/api/books/pdf",
+        data={"library_book_id": "11111111-1111-4111-8111-111111111111"},
+        files={"file": ("book.pdf", make_pdf(["Text."]), "application/pdf")},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "library_book_not_found"
+
+
 def test_renames_a_local_book_folder(
     client: TestClient,
     storage_path: Path,

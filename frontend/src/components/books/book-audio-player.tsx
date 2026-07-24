@@ -190,7 +190,7 @@ export function BookAudioPlayer({ bookId }: { bookId: string }) {
     <div className="mt-8">
       <section className="rounded-3xl border border-border bg-surface p-6 shadow-[0_20px_60px_rgba(48,55,61,0.06)] sm:p-8">
         <p className="text-sm font-bold tracking-[0.14em] text-accent uppercase">
-          Listen
+          Listening to
         </p>
         <div className="mt-2 flex flex-wrap items-start justify-between gap-5">
           <div>
@@ -199,7 +199,7 @@ export function BookAudioPlayer({ bookId }: { bookId: string }) {
             </h1>
             <p className="mt-2 text-muted">
               {segments.length > 0
-                ? `${segments.length} audio segment${segments.length === 1 ? "" : "s"} ready`
+                ? `${segments.length} audio part${segments.length === 1 ? "" : "s"} ready`
                 : "No listening audio yet"}
             </p>
           </div>
@@ -248,18 +248,42 @@ export function BookAudioPlayer({ bookId }: { bookId: string }) {
         )}
       </section>
 
+      {segments.length > 1 && (
+        <section className="mt-7 rounded-3xl border border-border bg-surface p-6 sm:p-8">
+          <h2 className="text-2xl font-semibold">Audio parts</h2>
+          <ol className="mt-5 space-y-3">
+            {segments.map((segment, index) => (
+              <li key={segment.id}>
+                <button
+                  type="button"
+                  onClick={() => moveTo(index)}
+                  className={`min-h-12 w-full rounded-xl border px-4 text-left font-semibold ${
+                    index === currentIndex
+                      ? "border-accent bg-[#edf4f7] text-accent"
+                      : "border-border bg-white hover:bg-[#f8f6f0]"
+                  }`}
+                >
+                  Part {segment.segment_number}
+                  {segment.page_number ? ` · page ${segment.page_number}` : ""}
+                </button>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+
       {currentSegment && (
         <section className="mt-7 rounded-3xl border border-border bg-surface p-6 sm:p-8">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <h2 className="text-2xl font-semibold">
-                Segment {currentSegment.segment_number}
-              </h2>
-              <p className="mt-1 text-sm text-muted">
+              <p className="text-sm font-semibold text-muted">
                 {currentSegment.page_number
-                  ? `From page ${currentSegment.page_number}`
-                  : "From prepared text"}
+                  ? `Page ${currentSegment.page_number}`
+                  : "Prepared text"}
               </p>
+              <h2 className="mt-1 text-2xl font-semibold">
+                Part {currentSegment.segment_number}
+              </h2>
             </div>
             <label className="flex items-center gap-3 text-sm font-semibold text-muted">
               Speed
@@ -315,7 +339,7 @@ export function BookAudioPlayer({ bookId }: { bookId: string }) {
               onClick={() => moveTo(currentIndex - 1)}
               className="min-h-11 rounded-lg border border-border px-4 font-semibold hover:bg-[#f8f6f0] disabled:opacity-50"
             >
-              Previous segment
+              Previous part
             </button>
             <button
               type="button"
@@ -323,7 +347,7 @@ export function BookAudioPlayer({ bookId }: { bookId: string }) {
               onClick={() => moveTo(currentIndex + 1)}
               className="min-h-11 rounded-lg border border-border px-4 font-semibold hover:bg-[#f8f6f0] disabled:opacity-50"
             >
-              Next segment
+              Next part
             </button>
             {completed && (
               <button
@@ -353,29 +377,6 @@ export function BookAudioPlayer({ bookId }: { bookId: string }) {
         </section>
       )}
 
-      {segments.length > 1 && (
-        <section className="mt-7 rounded-3xl border border-border bg-surface p-6 sm:p-8">
-          <h2 className="text-2xl font-semibold">Audio segments</h2>
-          <ol className="mt-5 space-y-3">
-            {segments.map((segment, index) => (
-              <li key={segment.id}>
-                <button
-                  type="button"
-                  onClick={() => moveTo(index)}
-                  className={`min-h-12 w-full rounded-xl border px-4 text-left font-semibold ${
-                    index === currentIndex
-                      ? "border-accent bg-[#edf4f7] text-accent"
-                      : "border-border bg-white hover:bg-[#f8f6f0]"
-                  }`}
-                >
-                  Segment {segment.segment_number}
-                  {segment.page_number ? ` · page ${segment.page_number}` : ""}
-                </button>
-              </li>
-            ))}
-          </ol>
-        </section>
-      )}
     </div>
   );
 }

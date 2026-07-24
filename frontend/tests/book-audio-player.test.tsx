@@ -96,8 +96,9 @@ describe("book audio player", () => {
       await screen.findByRole("button", { name: "Create listening audio" }),
     );
 
-    expect(await screen.findByText("2 audio segments ready")).toBeVisible();
-    expect(screen.getByRole("heading", { name: "Segment 1" })).toBeVisible();
+    expect(await screen.findByText("2 audio parts ready")).toBeVisible();
+    expect(screen.getByText("Page 1")).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Part 1" })).toBeVisible();
     expect(fetchMock.mock.calls[1][0]).toContain("/prepare-audio");
   });
 
@@ -105,10 +106,10 @@ describe("book audio player", () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(readyAudio));
     const { container } = render(<BookAudioPlayer bookId="book-id" />);
 
-    expect(await screen.findByRole("heading", { name: "Segment 1" })).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "Next segment" }));
+    expect(await screen.findByRole("heading", { name: "Part 1" })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Next part" }));
 
-    expect(screen.getByRole("heading", { name: "Segment 2" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Part 2" })).toBeVisible();
     expect(container.querySelector("audio")?.getAttribute("src")).toContain(
       "/api/books/book-id/audio/2/file",
     );
@@ -136,8 +137,8 @@ describe("book audio player", () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(readyAudio));
     const { container } = render(<BookAudioPlayer bookId="book-id" />);
 
-    expect(await screen.findByRole("heading", { name: "Segment 1" })).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "Next segment" }));
+    expect(await screen.findByRole("heading", { name: "Part 1" })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Next part" }));
     fireEvent.ended(container.querySelector("audio") as HTMLAudioElement);
 
     expect(screen.getByText("Finished this book.")).toBeVisible();

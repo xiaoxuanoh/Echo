@@ -186,10 +186,12 @@ def _library_folders(
         else:
             title_groups.setdefault(book.title.strip().casefold(), []).append(book)
 
-    groups = list(assigned_groups.items())
+    groups: list[tuple[UUID, list[BookRecord]]] = []
     for group_books in title_groups.values():
         folder_id = min(group_books, key=lambda item: item.created_at).id
-        groups.append((folder_id, group_books))
+        recordings = group_books + assigned_groups.pop(folder_id, [])
+        groups.append((folder_id, recordings))
+    groups.extend(assigned_groups.items())
 
     folders: list[BookLibraryFolderResult] = []
     for folder_id, recordings in groups:
@@ -235,6 +237,19 @@ def _folder_recordings(storage_root: Path, folder_id: UUID) -> list[BookRecord]:
         )
     recording_ids = {recording.id for recording in folder.recordings}
     return [book for book in books if book.id in recording_ids]
+
+
+def _target_library_folder(storage_root: Path, folder_id: UUID) -> BookLibraryFolderResult:
+    books = LocalBookMetadataService().list_books(storage_root)
+    folders = _library_folders(books, LocalBookJobRegistry())
+    folder = next((candidate for candidate in folders if candidate.id == folder_id), None)
+    if folder is None:
+        raise EchoError(
+            "library_book_not_found",
+            "Echo could not find that local book folder.",
+            status_code=404,
+        )
+    return folder
 
 
 def _audio_result(
@@ -359,10 +374,16 @@ def _safe_extension(filename: str | None) -> str:
 async def upload_pdf(
     request: Request,
     file: UploadFile = File(...),
+    library_book_id: UUID | None = Form(default=None),
 ) -> PdfUploadResult:
     settings = request.app.state.settings
     book_id = uuid4()
     storage = LocalStorageService(settings.local_storage_path)
+    target_folder = (
+        _target_library_folder(settings.local_storage_path, library_book_id)
+        if library_book_id is not None
+        else None
+    )
     book_directory = storage.create_book_directory(book_id)
     source_path = book_directory / "source.pdf"
 
@@ -419,8 +440,17 @@ async def upload_pdf(
 
         metadata = BookRecord(
             id=book_id,
-            library_book_id=book_id,
-            title=Path(file.filename or "book.pdf").stem or "Untitled book",
+            library_book_id=target_folder.id if target_folder else book_id,
+            title=(
+                target_folder.title
+                if target_folder
+                else Path(file.filename or "book.pdf").stem or "Untitled book"
+            ),
+            recording_title=(
+                (Path(file.filename or "book.pdf").stem or "Untitled recording")
+                if target_folder
+                else None
+            ),
             original_filename=file.filename or "book.pdf",
             source_type="pdf",
             source_storage_path="source.pdf",
@@ -463,6 +493,7 @@ async def upload_images(
     request: Request,
     files: list[UploadFile] = File(...),
     rotations: str = Form(...),
+    library_book_id: UUID | None = Form(default=None),
 ) -> ImageUploadResult:
     settings = request.app.state.settings
     if not files:
@@ -498,6 +529,11 @@ async def upload_images(
 
     book_id = uuid4()
     storage = LocalStorageService(settings.local_storage_path)
+    target_folder = (
+        _target_library_folder(settings.local_storage_path, library_book_id)
+        if library_book_id is not None
+        else None
+    )
     book_directory = storage.create_book_directory(book_id)
     originals_directory = book_directory / "originals"
     normalized_directory = book_directory / "pages"
@@ -561,10 +597,20 @@ async def upload_images(
 
         metadata = BookRecord(
             id=book_id,
-            library_book_id=book_id,
+            library_book_id=target_folder.id if target_folder else book_id,
             title=(
-                Path(page_records[0].original_filename or "Page photo book").stem
+                target_folder.title
+                if target_folder
+                else Path(page_records[0].original_filename or "Page photo book").stem
                 or "Page photo book"
+            ),
+            recording_title=(
+                (
+                    Path(page_records[0].original_filename or "Page photos").stem
+                    or "Page photos"
+                )
+                if target_folder
+                else None
             ),
             source_type="images",
             total_pages=len(page_records),

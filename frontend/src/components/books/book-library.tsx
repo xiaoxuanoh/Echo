@@ -50,17 +50,17 @@ function readSavedProgress(bookId: string): SavedProgress | null {
   }
 }
 
-function actionFor(recording: BookLibraryItem): { href: string; label: string } {
+function recordingHref(recording: BookLibraryItem): string {
   if (recording.processing_status === "ready") {
-    return { href: `/books/${recording.id}/listen`, label: "Listen" };
+    return `/books/${recording.id}/listen`;
   }
   if (
     recording.processing_status === "text_ready" ||
     recording.processing_status === "generating_audio"
   ) {
-    return { href: `/books/${recording.id}/listen`, label: "Create audio" };
+    return `/books/${recording.id}/listen`;
   }
-  return { href: `/books/${recording.id}`, label: "Prepare text" };
+  return `/books/${recording.id}`;
 }
 
 function formatDate(value: string): string {
@@ -74,6 +74,14 @@ function formatDate(value: string): string {
 
 function recordingLabel(recording: BookLibraryItem, index: number): string {
   return recording.recording_title ?? recording.original_filename ?? `Recording ${index + 1}`;
+}
+
+function uploadMoreHref(folder: BookLibraryFolder): string {
+  const params = new URLSearchParams({
+    folderId: folder.id,
+    folderTitle: folder.title,
+  });
+  return `/books/new?${params.toString()}`;
 }
 
 export function BookLibrary() {
@@ -248,15 +256,24 @@ export function BookLibrary() {
   if (folders.length === 0) {
     return (
       <section className="mx-auto mt-16 max-w-xl rounded-3xl border border-border bg-surface p-8 text-center shadow-[0_20px_60px_rgba(48,55,61,0.06)]">
-        <h1 className="text-3xl font-semibold">Your library is empty</h1>
+        <div
+          aria-hidden="true"
+          className="mx-auto flex h-28 w-40 items-end justify-center gap-2"
+        >
+          <div className="h-20 w-12 rounded-t-lg border border-accent bg-[#edf4f7]" />
+          <div className="h-24 w-12 rounded-t-lg border border-[#a9c5b3] bg-[#f4faf5]" />
+          <div className="h-16 w-12 rounded-t-lg border border-[#d9b9b4] bg-[#fff3f1]" />
+        </div>
+        <h1 className="mt-6 text-3xl font-semibold">Start your Echo library</h1>
         <p className="mx-auto mt-3 max-w-md leading-7 text-muted">
-          Upload a PDF or page photos to create your first local Echo book.
+          Upload a PDF or page photos. Echo will create your first local book and
+          keep its recordings together here.
         </p>
         <Link
           href="/books/new"
           className="mt-6 inline-flex min-h-12 items-center justify-center rounded-xl bg-accent px-5 font-semibold text-white hover:bg-accent-dark"
         >
-          Upload your book
+          Upload your first book
         </Link>
       </section>
     );
@@ -321,7 +338,14 @@ export function BookLibrary() {
                 {formatDate(selectedFolder.latest_recording_at)}
               </p>
             </div>
-            <div className="relative" ref={openMenu === "book" ? openMenuRef : null}>
+            <div className="flex items-start gap-2">
+              <Link
+                href={uploadMoreHref(selectedFolder)}
+                className="inline-flex min-h-11 items-center justify-center rounded-lg bg-accent px-4 font-semibold text-white hover:bg-accent-dark"
+              >
+                Upload more
+              </Link>
+              <div className="relative" ref={openMenu === "book" ? openMenuRef : null}>
               <button
                 type="button"
                 aria-haspopup="menu"
@@ -362,6 +386,7 @@ export function BookLibrary() {
                   </button>
                 </div>
               )}
+              </div>
             </div>
           </div>
 
@@ -409,7 +434,7 @@ export function BookLibrary() {
 
           <ol className="mt-6 space-y-3">
             {selectedFolder.recordings.map((recording, index) => {
-              const action = actionFor(recording);
+              const href = recordingHref(recording);
               const progress = progressByRecording[recording.id];
               const progressText = progress?.completed
                 ? "Finished"
@@ -420,7 +445,7 @@ export function BookLibrary() {
               return (
                 <li
                   key={recording.id}
-                  className="rounded-xl border border-border bg-white p-4"
+                  className="relative rounded-xl border border-border bg-white p-4 transition hover:border-accent hover:bg-[#fbfaf6]"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div>
@@ -438,13 +463,12 @@ export function BookLibrary() {
                         {progressText}
                       </p>
                     </div>
-                    <div className="flex w-full items-start gap-2 sm:w-auto">
-                      <Link
-                        href={action.href}
-                        className="inline-flex min-h-10 min-w-28 items-center justify-center rounded-lg bg-accent px-3 font-semibold text-white hover:bg-accent-dark"
-                      >
-                        {action.label}
-                      </Link>
+                    <Link
+                      href={href}
+                      aria-label={`Open ${recordingLabel(recording, index)}`}
+                      className="absolute inset-0 rounded-xl focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2"
+                    />
+                    <div className="relative z-10 flex items-start">
                       <div
                         className="relative"
                         ref={

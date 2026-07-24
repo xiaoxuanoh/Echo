@@ -133,9 +133,17 @@ export function audioFileUrl(path: string): string {
   return `${API_BASE_URL}${path}`;
 }
 
-export async function uploadPdf(file: File): Promise<PdfUploadResult> {
+type UploadOptions = {
+  libraryBookId?: string;
+};
+
+export async function uploadPdf(
+  file: File,
+  options: UploadOptions = {},
+): Promise<PdfUploadResult> {
   const formData = new FormData();
   formData.append("file", file);
+  if (options.libraryBookId) formData.append("library_book_id", options.libraryBookId);
   return parseResponse<PdfUploadResult>(
     await fetch(`${API_BASE_URL}/api/books/pdf`, {
       method: "POST",
@@ -146,10 +154,12 @@ export async function uploadPdf(file: File): Promise<PdfUploadResult> {
 
 export async function uploadImages(
   pages: { file: File; rotation: Rotation }[],
+  options: UploadOptions = {},
 ): Promise<ImageUploadResult> {
   const formData = new FormData();
   for (const page of pages) formData.append("files", page.file);
   formData.append("rotations", JSON.stringify(pages.map((page) => page.rotation)));
+  if (options.libraryBookId) formData.append("library_book_id", options.libraryBookId);
   return parseResponse<ImageUploadResult>(
     await fetch(`${API_BASE_URL}/api/books/images`, {
       method: "POST",

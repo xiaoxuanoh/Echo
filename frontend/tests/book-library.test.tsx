@@ -98,13 +98,17 @@ describe("book library", () => {
     expect(screen.getByText("2 recordings")).toBeVisible();
     expect(screen.getByText("Recording 2")).toBeVisible();
     expect(screen.getByText(/Saved at segment 2/)).toBeVisible();
-    expect(screen.getByRole("link", { name: "Listen" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Open ready.pdf" })).toHaveAttribute(
       "href",
       "/books/ready-book/listen",
     );
-    expect(screen.getByRole("link", { name: "Prepare text" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Open Recording 2" })).toHaveAttribute(
       "href",
       "/books/uploaded-book",
+    );
+    expect(screen.getByRole("link", { name: "Upload more" })).toHaveAttribute(
+      "href",
+      "/books/new?folderId=folder-id&folderTitle=Ready+book",
     );
   });
 
@@ -113,11 +117,10 @@ describe("book library", () => {
 
     render(<BookLibrary />);
 
-    expect(await screen.findByText("Your library is empty")).toBeVisible();
-    expect(screen.getByRole("link", { name: "Upload your book" })).toHaveAttribute(
-      "href",
-      "/books/new",
-    );
+    expect(await screen.findByText("Start your Echo library")).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: "Upload your first book" }),
+    ).toHaveAttribute("href", "/books/new");
   });
 
   it("renames a selected book folder", async () => {
