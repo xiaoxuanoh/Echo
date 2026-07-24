@@ -38,7 +38,7 @@ export function languageSummary(
   languages: ListeningLanguage[] | null | undefined,
 ): string {
   const labels = [...new Set((languages ?? []).map(listeningLanguageLabel).filter(Boolean))];
-  if (labels.length === 0) return "No listening language yet";
+  if (labels.length === 0) return "Language not set";
   if (labels.length <= 2) return labels.join(", ");
   return `${labels.length} languages`;
 }

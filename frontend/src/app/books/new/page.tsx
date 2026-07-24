@@ -21,7 +21,7 @@ export default async function NewBookPage({
         </Link>
         <header className="mt-7 max-w-3xl">
           <p className="text-sm font-bold tracking-[0.16em] text-accent uppercase">
-            {isAddingRecording ? "New recording" : "New document"}
+            {isAddingRecording ? "New recording" : "New upload"}
           </p>
           <h1 className="mt-3 text-4xl font-semibold tracking-[-0.025em] sm:text-5xl">
             {isAddingRecording ? "Upload more pages" : "Start uploading"}

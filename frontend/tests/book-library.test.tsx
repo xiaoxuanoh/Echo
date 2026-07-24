@@ -138,8 +138,8 @@ describe("book library", () => {
     render(<BookLibrary />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Document actions" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Rename document" }));
-    const input = await screen.findByLabelText("Document name");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename saved upload" }));
+    const input = await screen.findByLabelText("Saved upload name");
     fireEvent.change(input, { target: { value: "Renamed book" } });
     fireEvent.click(screen.getByRole("button", { name: "Save name" }));
 
@@ -154,14 +154,18 @@ describe("book library", () => {
     render(<BookLibrary />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Document actions" }));
-    expect(screen.getByRole("menuitem", { name: "Rename document" })).toBeVisible();
+    expect(screen.getByRole("menuitem", { name: "Rename saved upload" })).toBeVisible();
     fireEvent.mouseDown(screen.getByText("ready.pdf"));
-    expect(screen.queryByRole("menuitem", { name: "Rename document" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "Rename saved upload" }),
+    ).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Document actions" }));
-    expect(screen.getByRole("menuitem", { name: "Rename document" })).toBeVisible();
+    expect(screen.getByRole("menuitem", { name: "Rename saved upload" })).toBeVisible();
     fireEvent.keyDown(document, { key: "Escape" });
-    expect(screen.queryByRole("menuitem", { name: "Rename document" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "Rename saved upload" }),
+    ).not.toBeInTheDocument();
   });
 
   it("renames one recording from its actions menu", async () => {
@@ -198,7 +202,7 @@ describe("book library", () => {
     render(<BookLibrary />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Document actions" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Remove document" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Remove saved upload" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
     expect(fetchMock.mock.calls[1][0]).toContain("/api/books/folders/folder-id");

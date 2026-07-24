@@ -267,7 +267,7 @@ export function BookLibrary() {
         </div>
         <h1 className="mt-6 text-3xl font-semibold">Start your Echo library</h1>
         <p className="mx-auto mt-3 max-w-md leading-7 text-muted">
-          Upload a PDF or page photos. Echo will create your first local document and
+          Upload a PDF or page photos. Echo will create your first saved upload and
           keep its recordings together here.
         </p>
         <Link
@@ -377,7 +377,7 @@ export function BookLibrary() {
                     }}
                     className="min-h-10 w-full rounded-lg px-3 text-left font-semibold hover:bg-[#f8f6f0]"
                   >
-                    Rename document
+                    Rename saved upload
                   </button>
                   <button
                     type="button"
@@ -389,7 +389,7 @@ export function BookLibrary() {
                     }}
                     className="min-h-10 w-full rounded-lg px-3 text-left font-semibold text-[#783a33] hover:bg-[#fff3f1] disabled:opacity-60"
                   >
-                    Remove document
+                    Remove saved upload
                   </button>
                 </div>
               )}
@@ -400,7 +400,7 @@ export function BookLibrary() {
           {renaming && (
             <div className="mt-5 flex flex-col gap-3 rounded-xl border border-border bg-white p-4 sm:flex-row">
               <label className="flex-1">
-                <span className="text-sm font-semibold text-muted">Document name</span>
+                <span className="text-sm font-semibold text-muted">Saved upload name</span>
                 <input
                   value={renameValue}
                   onChange={(event) => setRenameValue(event.target.value)}

@@ -10,11 +10,11 @@ export default function BooksPage() {
         <div className="flex flex-wrap items-start justify-between gap-5">
           <div>
             <p className="text-sm font-bold tracking-[0.14em] text-accent uppercase">
-              Library
+              Echo
             </p>
-            <h1 className="mt-2 text-4xl font-semibold">Your Echo library</h1>
+            <h1 className="mt-2 text-4xl font-semibold">Library</h1>
             <p className="mt-3 max-w-2xl leading-7 text-muted">
-              Return to local documents, continue preparation, or resume listening.
+              Return to saved uploads, continue preparation, or resume listening.
             </p>
           </div>
           <div className="flex w-full flex-col gap-3 sm:w-auto">
@@ -22,7 +22,7 @@ export default function BooksPage() {
               href="/books/new"
               className="inline-flex min-h-12 items-center justify-center rounded-xl bg-accent px-5 font-semibold text-white hover:bg-accent-dark"
             >
-              Start a new document
+              Upload new file
             </Link>
             <Link
               href="/"
