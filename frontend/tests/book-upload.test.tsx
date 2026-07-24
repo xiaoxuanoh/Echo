@@ -29,6 +29,8 @@ describe("page photo workflow", () => {
         JSON.stringify({
           book_id: "temporary-book-id",
           source_type: "images",
+          target_language: "cantonese",
+          tts_voice: "zh-HK-HiuMaanNeural",
           total_pages: 2,
           ordered_image_filenames: ["page-two.png", "page-one.png"],
           pages: [
@@ -75,7 +77,7 @@ describe("page photo workflow", () => {
 
     fireEvent.click(screen.getAllByRole("button", { name: "Rotate right" })[0]);
     fireEvent.click(screen.getAllByRole("button", { name: "Later" })[0]);
-    fireEvent.click(screen.getByRole("button", { name: "Prepare your book" }));
+    fireEvent.click(screen.getByRole("button", { name: "Prepare your document" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
     const request = fetchMock.mock.calls[0][1];
@@ -84,11 +86,12 @@ describe("page photo workflow", () => {
 
     expect(filenames).toEqual(["page-two.png", "page-one.png"]);
     expect(body.get("rotations")).toBe("[0,90]");
-    expect(await screen.findByText("Your book pages are prepared")).toBeVisible();
+    expect(body.get("target_language")).toBe("cantonese");
+    expect(await screen.findByText("Your document pages are prepared")).toBeVisible();
     expect(screen.getByText("Page 1 · page-two.png")).toBeVisible();
     expect(screen.getAllByText("Image ready for text reading")).toHaveLength(2);
     expect(
-      screen.getByRole("link", { name: "Continue preparing your book" }),
+      screen.getByRole("link", { name: "Continue preparing your document" }),
     ).toHaveAttribute("href", "/books/temporary-book-id");
   });
 
@@ -99,6 +102,8 @@ describe("page photo workflow", () => {
         JSON.stringify({
           book_id: "new-recording-id",
           source_type: "pdf",
+          target_language: "mandarin",
+          tts_voice: "zh-CN-XiaoxiaoNeural",
           total_pages: 1,
           original_filename: "chapter-two.pdf",
           classification: "text",
@@ -108,17 +113,24 @@ describe("page photo workflow", () => {
         { status: 200, headers: { "Content-Type": "application/json" } },
       ),
     );
-    render(<BookUpload libraryBookId="folder-id" libraryBookTitle="Ready book" />);
+    render(
+      <BookUpload
+        initialLanguage="mandarin"
+        libraryBookId="folder-id"
+        libraryBookTitle="Ready book"
+      />,
+    );
 
     const pdf = new File(["pdf"], "chapter-two.pdf", { type: "application/pdf" });
     fireEvent.change(screen.getByLabelText("Choose PDF"), {
       target: { files: [pdf] },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Prepare your book" }));
+    fireEvent.click(screen.getByRole("button", { name: "Prepare your document" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
     const body = fetchMock.mock.calls[0][1]?.body as FormData;
     expect(body.get("library_book_id")).toBe("folder-id");
+    expect(body.get("target_language")).toBe("mandarin");
     expect(await screen.findByText("Your new recording is prepared")).toBeVisible();
     expect(screen.getByText("Ready book")).toBeVisible();
   });

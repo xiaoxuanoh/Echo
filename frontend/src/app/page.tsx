@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { ListeningLanguageStart } from "@/components/language/listening-language-start";
 
 export default function Home() {
   return (
@@ -9,26 +9,13 @@ export default function Home() {
             Echo
           </p>
           <h1 className="max-w-3xl text-5xl leading-[1.08] font-semibold tracking-[-0.035em] sm:text-6xl">
-            Listen to your Traditional Chinese books in Cantonese.
+            Turn your documents into spoken language.
           </h1>
           <p className="mt-7 max-w-2xl text-lg leading-8 text-muted">
-            Upload a PDF or add photos of each page. Echo will prepare the
-            pages in order, ready for Cantonese audio in a later step.
+            Upload a PDF or add photos of each page. Echo prepares them into
+            clear audio you can listen to later.
           </p>
-          <div className="mt-9 flex flex-wrap gap-3">
-            <Link
-              href="/books"
-              className="inline-flex min-h-14 items-center justify-center rounded-xl bg-accent px-7 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-accent-dark"
-            >
-              Open library
-            </Link>
-            <Link
-              href="/books/new"
-              className="inline-flex min-h-14 items-center justify-center rounded-xl border border-border bg-surface px-7 py-3 text-base font-semibold text-foreground transition hover:bg-[#f8f6f0]"
-            >
-              Upload your book
-            </Link>
-          </div>
+          <ListeningLanguageStart />
         </section>
 
         <section
@@ -37,7 +24,7 @@ export default function Home() {
         >
           <ol className="space-y-7">
             {[
-              ["1", "Upload your book", "Choose one PDF or several page photos."],
+              ["1", "Upload your document", "Choose one PDF or several page photos."],
               ["2", "Arrange your pages", "Check the order and rotate photos if needed."],
               ["3", "Ready for the next step", "Echo prepares a clean page-by-page result."],
             ].map(([number, title, copy]) => (

@@ -44,6 +44,11 @@ from app.services.book_processing import (
     LocalBookJobRegistry,
 )
 from app.services.image_processing import ImageProcessingService
+from app.services.listening_languages import (
+    ListeningLanguage,
+    resolve_listening_language,
+    voice_for_language,
+)
 from app.services.ocr import create_ocr_provider
 from app.services.pdf_processing import PdfProcessingService
 from app.services.storage import LocalStorageService
@@ -84,8 +89,16 @@ def _audio_processing_service(request: Request) -> BookAudioProcessingService:
     return BookAudioProcessingService(
         storage_root=settings.local_storage_path,
         max_segment_characters=settings.tts_segment_max_characters,
-        tts_provider=create_tts_provider(settings),
+        tts_provider_factory=lambda voice: create_tts_provider(
+            settings,
+            voice_override=voice,
+        ),
     )
+
+
+def _language_fields(target_language: str | None) -> tuple[ListeningLanguage | None, str | None]:
+    language = resolve_listening_language(target_language)
+    return language, voice_for_language(language)
 
 
 def _book_result(
@@ -97,6 +110,8 @@ def _book_result(
         id=book.id,
         title=book.title,
         original_filename=book.original_filename,
+        target_language=book.target_language,
+        tts_voice=book.tts_voice,
         source_type=book.source_type,
         total_pages=book.total_pages,
         processing_status=book.status,
@@ -137,6 +152,8 @@ def _library_item_result(
         library_book_id=library_book_id or book.library_book_id or book.id,
         title=book.title,
         recording_title=book.recording_title,
+        target_language=book.target_language,
+        tts_voice=book.tts_voice,
         original_filename=book.original_filename,
         source_type=book.source_type,
         total_pages=book.total_pages,
@@ -201,6 +218,13 @@ def _library_folders(
             reverse=True,
         )
         processing_active = any(registry.is_active(recording.id) for recording in recordings)
+        target_languages = sorted(
+            {
+                recording.target_language
+                for recording in recordings
+                if recording.target_language is not None
+            }
+        )
         folders.append(
             BookLibraryFolderResult(
                 id=folder_id,
@@ -209,6 +233,7 @@ def _library_folders(
                 total_pages=sum(recording.total_pages for recording in recordings),
                 processing_status=_folder_status(sorted_recordings),
                 processing_active=processing_active,
+                target_languages=target_languages,
                 latest_recording_at=sorted_recordings[0].updated_at,
                 recordings=[
                     _library_item_result(
@@ -261,6 +286,8 @@ def _audio_result(
     return BookAudioResult(
         book_id=book.id,
         title=book.title,
+        target_language=book.target_language,
+        tts_voice=book.tts_voice,
         processing_status=book.status,
         processing_active=processing_active,
         segments=[
@@ -375,9 +402,11 @@ async def upload_pdf(
     request: Request,
     file: UploadFile = File(...),
     library_book_id: UUID | None = Form(default=None),
+    target_language: str | None = Form(default=None),
 ) -> PdfUploadResult:
     settings = request.app.state.settings
     book_id = uuid4()
+    language, tts_voice = _language_fields(target_language)
     storage = LocalStorageService(settings.local_storage_path)
     target_folder = (
         _target_library_folder(settings.local_storage_path, library_book_id)
@@ -444,14 +473,16 @@ async def upload_pdf(
             title=(
                 target_folder.title
                 if target_folder
-                else Path(file.filename or "book.pdf").stem or "Untitled book"
+                else Path(file.filename or "document.pdf").stem or "Untitled document"
             ),
             recording_title=(
-                (Path(file.filename or "book.pdf").stem or "Untitled recording")
+                (Path(file.filename or "document.pdf").stem or "Untitled recording")
                 if target_folder
                 else None
             ),
-            original_filename=file.filename or "book.pdf",
+            target_language=language,
+            tts_voice=tts_voice,
+            original_filename=file.filename or "document.pdf",
             source_type="pdf",
             source_storage_path="source.pdf",
             total_pages=inspection.total_pages,
@@ -467,8 +498,10 @@ async def upload_pdf(
 
     return PdfUploadResult(
         book_id=str(book_id),
+        target_language=language,
+        tts_voice=tts_voice,
         total_pages=inspection.total_pages,
-        original_filename=file.filename or "book.pdf",
+        original_filename=file.filename or "document.pdf",
         classification=inspection.classification,
         pages=[
             PdfPageResult(
@@ -494,8 +527,10 @@ async def upload_images(
     files: list[UploadFile] = File(...),
     rotations: str = Form(...),
     library_book_id: UUID | None = Form(default=None),
+    target_language: str | None = Form(default=None),
 ) -> ImageUploadResult:
     settings = request.app.state.settings
+    language, tts_voice = _language_fields(target_language)
     if not files:
         raise EchoError("no_images", "Please add at least one page image.")
     if len(files) > settings.max_image_upload_count:
@@ -601,8 +636,8 @@ async def upload_images(
             title=(
                 target_folder.title
                 if target_folder
-                else Path(page_records[0].original_filename or "Page photo book").stem
-                or "Page photo book"
+                else Path(page_records[0].original_filename or "Page photo document").stem
+                or "Page photo document"
             ),
             recording_title=(
                 (
@@ -612,6 +647,8 @@ async def upload_images(
                 if target_folder
                 else None
             ),
+            target_language=language,
+            tts_voice=tts_voice,
             source_type="images",
             total_pages=len(page_records),
             status="uploaded",
@@ -626,6 +663,8 @@ async def upload_images(
 
     return ImageUploadResult(
         book_id=str(book_id),
+        target_language=language,
+        tts_voice=tts_voice,
         total_pages=len(page_results),
         ordered_image_filenames=[page.original_filename for page in page_results],
         pages=page_results,

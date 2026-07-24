@@ -362,7 +362,7 @@ export function BookAudioPlayer({ bookId }: { bookId: string }) {
 
           {completed && (
             <p className="mt-4 rounded-xl border border-[#a9c5b3] bg-[#f4faf5] p-4 text-[#376247]">
-              Finished this book.
+              Finished this document.
             </p>
           )}
 

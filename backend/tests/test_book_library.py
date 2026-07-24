@@ -48,12 +48,15 @@ def test_lists_local_books_by_latest_update(
     assert result["folders"][0]["total_pages"] == 1
     assert result["folders"][0]["processing_status"] == "uploaded"
     assert result["folders"][0]["processing_active"] is False
+    assert result["folders"][0]["target_languages"] == []
     assert result["folders"][0]["latest_recording_at"] == "2026-07-24T00:00:00Z"
     assert result["folders"][0]["recordings"][0] == {
         "id": newer_upload["book_id"],
         "library_book_id": newer_upload["book_id"],
         "title": "newer",
         "recording_title": None,
+        "target_language": None,
+        "tts_voice": None,
         "original_filename": "newer.pdf",
         "source_type": "pdf",
         "total_pages": 1,
@@ -120,6 +123,38 @@ def test_uploads_pdf_recording_to_existing_library_book(
     assert folder["id"] == first["book_id"]
     assert folder["title"] == "book"
     assert folder["recording_count"] == 2
+
+
+def test_uploads_store_selected_listening_language(
+    client: TestClient,
+    storage_path: Path,
+) -> None:
+    response = client.post(
+        "/api/books/pdf",
+        data={"target_language": "cantonese"},
+        files={"file": ("document.pdf", make_pdf(["Text."]), "application/pdf")},
+    )
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result["target_language"] == "cantonese"
+    assert result["tts_voice"] == "zh-HK-HiuMaanNeural"
+    saved = LocalBookMetadataService().load(storage_path / result["book_id"])
+    assert saved.target_language == "cantonese"
+    assert saved.tts_voice == "zh-HK-HiuMaanNeural"
+    folder = client.get("/api/books").json()["folders"][0]
+    assert folder["target_languages"] == ["cantonese"]
+
+
+def test_upload_rejects_unknown_listening_language(client: TestClient) -> None:
+    response = client.post(
+        "/api/books/pdf",
+        data={"target_language": "spanish"},
+        files={"file": ("document.pdf", make_pdf(["Text."]), "application/pdf")},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "target_language_unknown"
 
 
 def test_upload_to_unknown_library_book_returns_not_found(client: TestClient) -> None:

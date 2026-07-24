@@ -126,6 +126,8 @@ def test_prepares_mock_audio_for_text_ready_book(
     assert detail.json()["audio_segment_count"] == 1
     assert audio.status_code == 200
     assert audio.json()["processing_status"] == "ready"
+    assert audio.json()["target_language"] is None
+    assert audio.json()["tts_voice"] is None
     assert audio.json()["segments"][0]["processing_status"] == "completed"
     assert audio.json()["segments"][0]["audio_url"].endswith("/audio/1/file")
 
@@ -175,6 +177,21 @@ def test_tts_factory_selects_edge_when_configured(
 
     assert isinstance(provider, EdgeTtsProvider)
     assert provider.audio_file_extension == "mp3"
+
+
+def test_tts_factory_uses_voice_override(storage_path: Path) -> None:
+    settings = Settings(
+        _env_file=None,
+        local_storage_path=storage_path,
+        use_mock_tts=False,
+        tts_provider="edge",
+        edge_tts_voice="zh-CN-XiaoxiaoNeural",
+    )
+
+    provider = create_tts_provider(settings, voice_override="zh-HK-HiuMaanNeural")
+
+    assert isinstance(provider, EdgeTtsProvider)
+    assert provider.voice == "zh-HK-HiuMaanNeural"
 
 
 def test_azure_mode_reports_missing_configuration(storage_path: Path) -> None:

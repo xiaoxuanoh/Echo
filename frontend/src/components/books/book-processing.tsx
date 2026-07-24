@@ -54,7 +54,7 @@ export function BookProcessing({ bookId }: { bookId: string }) {
       setError(
         caught instanceof Error
           ? caught.message
-          : "Echo could not load this temporary book.",
+          : "Echo could not load this temporary document.",
       );
     } finally {
       setLoading(false);
@@ -113,14 +113,14 @@ export function BookProcessing({ bookId }: { bookId: string }) {
   }
 
   if (loading) {
-    return <p className="mt-10 text-lg text-muted">Loading your book…</p>;
+    return <p className="mt-10 text-lg text-muted">Loading your document...</p>;
   }
 
   if (!book) {
     return (
       <div className="mt-10 rounded-2xl border border-[#d9b9b4] bg-[#fff3f1] p-5">
         <p role="alert" className="text-[#783a33]">
-          {error || "Echo could not load this temporary book."}
+          {error || "Echo could not load this temporary document."}
         </p>
         <button
           type="button"
@@ -196,7 +196,7 @@ export function BookProcessing({ bookId }: { bookId: string }) {
         )}
         {book.processing_status === "text_ready" && (
           <div className="mt-4 rounded-xl border border-[#a9c5b3] bg-[#f4faf5] p-4 text-[#376247]">
-            <p>All page text is prepared. You can now create local mock audio.</p>
+            <p>All page text is prepared. You can now create listening audio.</p>
             <Link
               href={`/books/${book.id}/listen`}
               className="mt-3 inline-flex min-h-11 items-center rounded-lg bg-accent px-4 font-semibold text-white hover:bg-accent-dark"
@@ -212,7 +212,7 @@ export function BookProcessing({ bookId }: { bookId: string }) {
               href={`/books/${book.id}/listen`}
               className="mt-3 inline-flex min-h-11 items-center rounded-lg bg-accent px-4 font-semibold text-white hover:bg-accent-dark"
             >
-              Listen to your book
+              Listen to your document
             </Link>
           </div>
         )}

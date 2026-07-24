@@ -9,6 +9,8 @@ const readyBook = {
   library_book_id: "folder-id",
   title: "Ready book",
   recording_title: null,
+  target_language: "cantonese",
+  tts_voice: "zh-HK-HiuMaanNeural",
   original_filename: "ready.pdf",
   source_type: "pdf",
   total_pages: 2,
@@ -43,6 +45,7 @@ const readyFolder = {
   total_pages: 3,
   processing_status: "ready",
   processing_active: false,
+  target_languages: ["cantonese"],
   latest_recording_at: "2026-07-24T09:30:00Z",
   recordings: [readyBook, uploadedBook],
 };
@@ -95,6 +98,7 @@ describe("book library", () => {
 
     expect(await screen.findAllByText("Ready book")).toHaveLength(2);
     expect(screen.getByText(/2 recordings · 3 pages/)).toBeVisible();
+    expect(screen.getAllByText("Cantonese")).toHaveLength(2);
     expect(screen.getByText("2 recordings")).toBeVisible();
     expect(screen.getByText("Recording 2")).toBeVisible();
     expect(screen.getByText(/Saved at segment 2/)).toBeVisible();
@@ -119,7 +123,7 @@ describe("book library", () => {
 
     expect(await screen.findByText("Start your Echo library")).toBeVisible();
     expect(
-      screen.getByRole("link", { name: "Upload your first book" }),
+      screen.getByRole("link", { name: "Start uploading" }),
     ).toHaveAttribute("href", "/books/new");
   });
 
@@ -133,9 +137,9 @@ describe("book library", () => {
 
     render(<BookLibrary />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Book actions" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Rename book" }));
-    const input = await screen.findByLabelText("Book name");
+    fireEvent.click(await screen.findByRole("button", { name: "Document actions" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename document" }));
+    const input = await screen.findByLabelText("Document name");
     fireEvent.change(input, { target: { value: "Renamed book" } });
     fireEvent.click(screen.getByRole("button", { name: "Save name" }));
 
@@ -149,15 +153,15 @@ describe("book library", () => {
 
     render(<BookLibrary />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Book actions" }));
-    expect(screen.getByRole("menuitem", { name: "Rename book" })).toBeVisible();
+    fireEvent.click(await screen.findByRole("button", { name: "Document actions" }));
+    expect(screen.getByRole("menuitem", { name: "Rename document" })).toBeVisible();
     fireEvent.mouseDown(screen.getByText("ready.pdf"));
-    expect(screen.queryByRole("menuitem", { name: "Rename book" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Rename document" })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Book actions" }));
-    expect(screen.getByRole("menuitem", { name: "Rename book" })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Document actions" }));
+    expect(screen.getByRole("menuitem", { name: "Rename document" })).toBeVisible();
     fireEvent.keyDown(document, { key: "Escape" });
-    expect(screen.queryByRole("menuitem", { name: "Rename book" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Rename document" })).not.toBeInTheDocument();
   });
 
   it("renames one recording from its actions menu", async () => {
@@ -193,8 +197,8 @@ describe("book library", () => {
 
     render(<BookLibrary />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Book actions" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Remove book" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Document actions" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Remove document" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
     expect(fetchMock.mock.calls[1][0]).toContain("/api/books/folders/folder-id");

@@ -1,6 +1,7 @@
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
+from collections.abc import Callable
 from uuid import UUID, uuid4
 
 from app.core.errors import EchoError
@@ -22,11 +23,13 @@ class BookAudioProcessingService:
         storage_root: Path,
         max_segment_characters: int,
         tts_provider: TtsProvider | None = None,
+        tts_provider_factory: Callable[[str | None], TtsProvider] | None = None,
         metadata: LocalBookMetadataService | None = None,
     ) -> None:
         self.storage_root = storage_root
         self.segmenter = TextSegmentationService(max_segment_characters)
         self.tts_provider = tts_provider or MockTtsProvider()
+        self.tts_provider_factory = tts_provider_factory
         self.metadata = metadata or LocalBookMetadataService()
 
     def book_directory(self, book_id: UUID) -> Path:
@@ -34,6 +37,11 @@ class BookAudioProcessingService:
 
     def load_book(self, book_id: UUID) -> BookRecord:
         return self.metadata.load(self.book_directory(book_id))
+
+    def _tts_provider_for(self, book: BookRecord) -> TtsProvider:
+        if self.tts_provider_factory:
+            return self.tts_provider_factory(book.tts_voice)
+        return self.tts_provider
 
     def prepare_audio_job(self, book_id: UUID) -> BookRecord:
         book = self.load_book(book_id)
@@ -66,6 +74,7 @@ class BookAudioProcessingService:
                 "All pages need text before Echo can create listening audio.",
                 status_code=409,
             )
+        self._tts_provider_for(book)
 
         drafts = self.segmenter.segment_pages(book.pages)
         if not drafts:
@@ -98,6 +107,7 @@ class BookAudioProcessingService:
     def process_audio(self, book_id: UUID) -> None:
         book = self.load_book(book_id)
         audio_directory = self.book_directory(book_id) / "audio"
+        tts_provider = self._tts_provider_for(book)
 
         for segment in sorted(book.audio_segments, key=lambda item: item.segment_number):
             if segment.processing_status == "completed":
@@ -112,9 +122,9 @@ class BookAudioProcessingService:
             try:
                 filename = (
                     f"segment-{segment.segment_number:04d}."
-                    f"{self.tts_provider.audio_file_extension}"
+                    f"{tts_provider.audio_file_extension}"
                 )
-                duration = self.tts_provider.synthesize(
+                duration = tts_provider.synthesize(
                     segment.source_text,
                     audio_directory / filename,
                 )

@@ -7,6 +7,8 @@ import { BookAudioPlayer } from "@/components/books/book-audio-player";
 const textReadyAudio = {
   book_id: "book-id",
   title: "My book",
+  target_language: "cantonese",
+  tts_voice: "zh-HK-HiuMaanNeural",
   processing_status: "text_ready",
   processing_active: false,
   segments: [],
@@ -141,7 +143,7 @@ describe("book audio player", () => {
     fireEvent.click(screen.getByRole("button", { name: "Next part" }));
     fireEvent.ended(container.querySelector("audio") as HTMLAudioElement);
 
-    expect(screen.getByText("Finished this book.")).toBeVisible();
+    expect(screen.getByText("Finished this document.")).toBeVisible();
     expect(screen.getByRole("button", { name: "Start over" })).toBeVisible();
     expect(
       JSON.parse(

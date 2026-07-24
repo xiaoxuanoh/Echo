@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Echo — Traditional Chinese books in Cantonese",
-  description: "Turn Traditional Chinese books into Cantonese audio.",
+  title: "Echo - Spoken documents",
+  description: "Turn your documents into spoken language.",
 };
 
 export default function RootLayout({

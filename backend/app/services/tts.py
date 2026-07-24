@@ -177,12 +177,12 @@ class EdgeTtsProvider:
         return min(120.0, max(1.0, len(text.strip()) / 6))
 
 
-def create_tts_provider(settings: Settings) -> TtsProvider:
+def create_tts_provider(settings: Settings, *, voice_override: str | None = None) -> TtsProvider:
     if settings.use_mock_tts:
         return MockTtsProvider()
     provider_name = settings.tts_provider.lower().strip()
     if provider_name == "edge":
-        return EdgeTtsProvider(voice=settings.edge_tts_voice)
+        return EdgeTtsProvider(voice=voice_override or settings.edge_tts_voice)
     if provider_name != "azure":
         raise EchoError(
             "tts_provider_unknown",
@@ -193,5 +193,5 @@ def create_tts_provider(settings: Settings) -> TtsProvider:
     return AzureSpeechTtsProvider(
         speech_key=settings.azure_speech_key,
         region=settings.azure_speech_region,
-        voice=settings.azure_speech_voice,
+        voice=voice_override or settings.azure_speech_voice,
     )

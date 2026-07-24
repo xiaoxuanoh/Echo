@@ -22,6 +22,13 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 import { uploadImages, uploadPdf } from "@/lib/api";
+import {
+  defaultListeningLanguage,
+  isListeningLanguage,
+  listeningLanguageLabel,
+  listeningLanguages,
+  type ListeningLanguage,
+} from "@/lib/listening-languages";
 import { validateNewImages, validatePdf } from "@/lib/upload-validation";
 import type { Rotation, UploadResult } from "@/types/books";
 
@@ -155,9 +162,15 @@ function UploadResultCard({
       <h2 className="mt-2 text-2xl font-semibold">
         {libraryBookTitle
           ? "Your new recording is prepared"
-          : "Your book pages are prepared"}
+          : "Your document pages are prepared"}
       </h2>
       <dl className="mt-5 grid gap-4 sm:grid-cols-2">
+        <div>
+          <dt className="text-sm text-muted">Listening language</dt>
+          <dd className="mt-1 font-semibold">
+            {listeningLanguageLabel(result.target_language) ?? "Default voice"}
+          </dd>
+        </div>
         <div>
           <dt className="text-sm text-muted">Pages</dt>
           <dd className="mt-1 font-semibold">{result.total_pages}</dd>
@@ -215,25 +228,32 @@ function UploadResultCard({
           ))}
         </ol>
       </div>
-      <p className="mt-5 text-sm text-muted">Temporary book ID: {result.book_id}</p>
+      <p className="mt-5 text-sm text-muted">
+        Temporary document ID: {result.book_id}
+      </p>
       <Link
         href={`/books/${result.book_id}`}
         className="mt-5 inline-flex min-h-12 items-center rounded-xl bg-accent px-6 py-3 font-semibold text-white shadow-sm transition hover:bg-accent-dark"
       >
-        Continue preparing your book
+        Continue preparing your document
       </Link>
     </section>
   );
 }
 
 export function BookUpload({
+  initialLanguage,
   libraryBookId,
   libraryBookTitle,
 }: {
+  initialLanguage?: string;
   libraryBookId?: string;
   libraryBookTitle?: string;
 }) {
   const [mode, setMode] = useState<Mode>("pdf");
+  const [targetLanguage, setTargetLanguage] = useState<ListeningLanguage>(
+    isListeningLanguage(initialLanguage) ? initialLanguage : defaultListeningLanguage,
+  );
   const [pdf, setPdf] = useState<File | null>(null);
   const [images, setImages] = useState<PendingImage[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -341,8 +361,8 @@ export function BookUpload({
     try {
       const uploadResult =
         mode === "pdf"
-          ? await uploadPdf(pdf as File, { libraryBookId })
-          : await uploadImages(images, { libraryBookId });
+          ? await uploadPdf(pdf as File, { libraryBookId, targetLanguage })
+          : await uploadImages(images, { libraryBookId, targetLanguage });
       setResult(uploadResult);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "The upload did not complete.");
@@ -356,16 +376,42 @@ export function BookUpload({
       {libraryBookTitle && (
         <div className="mb-6 rounded-2xl border border-[#b9d0da] bg-[#edf4f7] p-4">
           <p className="text-sm font-bold tracking-wide text-accent uppercase">
-            Adding to library book
+            Adding to library document
           </p>
           <p className="mt-1 text-lg font-semibold">{libraryBookTitle}</p>
         </div>
       )}
 
+      <fieldset className="mb-6">
+        <legend className="font-semibold">
+          Choose how you&apos;d like to listen to this document.
+        </legend>
+        <div className="mt-3 grid gap-2 sm:grid-cols-3" aria-label="Listening language">
+          {listeningLanguages.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              aria-pressed={targetLanguage === option.id}
+              onClick={() => {
+                setTargetLanguage(option.id);
+                setResult(null);
+              }}
+              className={`min-h-12 rounded-xl border px-4 font-semibold transition ${
+                targetLanguage === option.id
+                  ? "border-accent bg-[#edf4f7] text-accent"
+                  : "border-border bg-surface hover:border-accent"
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </fieldset>
+
       <div
         className="grid gap-3 sm:grid-cols-2"
         role="group"
-        aria-label="Book source"
+        aria-label="Document source"
       >
         <button
           type="button"
@@ -374,7 +420,7 @@ export function BookUpload({
           className={`min-h-24 rounded-2xl border p-5 text-left transition ${mode === "pdf" ? "border-accent bg-[#edf4f7] shadow-sm" : "border-border bg-surface hover:border-[#a7adb0]"}`}
         >
           <span className="block font-semibold">Upload PDF</span>
-          <span className="mt-1 block text-sm text-muted">Choose one PDF book.</span>
+          <span className="mt-1 block text-sm text-muted">Choose one PDF document.</span>
         </button>
         <button
           type="button"
@@ -491,7 +537,7 @@ export function BookUpload({
         onClick={submit}
         className="mt-7 min-h-14 w-full rounded-xl bg-accent px-7 py-3 font-semibold text-white shadow-sm transition hover:bg-accent-dark disabled:cursor-wait disabled:opacity-60 sm:w-auto"
       >
-        {submitting ? "Preparing your book…" : "Prepare your book"}
+        {submitting ? "Preparing your document..." : "Prepare your document"}
       </button>
 
       {result && (

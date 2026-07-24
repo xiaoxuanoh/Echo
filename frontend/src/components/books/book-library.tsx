@@ -10,6 +10,7 @@ import {
   renameBookFolder,
   renameBookRecording,
 } from "@/lib/api";
+import { languageSummary } from "@/lib/listening-languages";
 import type {
   BookLibraryFolder,
   BookLibraryItem,
@@ -266,14 +267,14 @@ export function BookLibrary() {
         </div>
         <h1 className="mt-6 text-3xl font-semibold">Start your Echo library</h1>
         <p className="mx-auto mt-3 max-w-md leading-7 text-muted">
-          Upload a PDF or page photos. Echo will create your first local book and
+          Upload a PDF or page photos. Echo will create your first local document and
           keep its recordings together here.
         </p>
         <Link
           href="/books/new"
           className="mt-6 inline-flex min-h-12 items-center justify-center rounded-xl bg-accent px-5 font-semibold text-white hover:bg-accent-dark"
         >
-          Upload your first book
+          Start uploading
         </Link>
       </section>
     );
@@ -314,6 +315,9 @@ export function BookLibrary() {
                   {folder.total_pages} page
                   {folder.total_pages === 1 ? "" : "s"}
                 </span>
+                <span className="mt-1 block text-sm leading-6 text-muted">
+                  {languageSummary(folder.target_languages)}
+                </span>
                 <span className="mt-3 block text-sm font-semibold text-accent">
                   {statusLabels[folder.processing_status]}
                 </span>
@@ -337,6 +341,9 @@ export function BookLibrary() {
                 {selectedFolder.total_pages === 1 ? "" : "s"} · updated{" "}
                 {formatDate(selectedFolder.latest_recording_at)}
               </p>
+              <p className="mt-1 text-sm text-muted">
+                {languageSummary(selectedFolder.target_languages)}
+              </p>
             </div>
             <div className="flex items-start gap-2">
               <Link
@@ -350,7 +357,7 @@ export function BookLibrary() {
                 type="button"
                 aria-haspopup="menu"
                 aria-expanded={openMenu === "book"}
-                aria-label="Book actions"
+                aria-label="Document actions"
                 onClick={() => setOpenMenu((open) => (open === "book" ? null : "book"))}
                 className="flex size-11 items-center justify-center rounded-lg border border-border bg-white text-2xl font-semibold leading-none hover:bg-[#f8f6f0]"
               >
@@ -370,7 +377,7 @@ export function BookLibrary() {
                     }}
                     className="min-h-10 w-full rounded-lg px-3 text-left font-semibold hover:bg-[#f8f6f0]"
                   >
-                    Rename book
+                    Rename document
                   </button>
                   <button
                     type="button"
@@ -382,7 +389,7 @@ export function BookLibrary() {
                     }}
                     className="min-h-10 w-full rounded-lg px-3 text-left font-semibold text-[#783a33] hover:bg-[#fff3f1] disabled:opacity-60"
                   >
-                    Remove book
+                    Remove document
                   </button>
                 </div>
               )}
@@ -393,7 +400,7 @@ export function BookLibrary() {
           {renaming && (
             <div className="mt-5 flex flex-col gap-3 rounded-xl border border-border bg-white p-4 sm:flex-row">
               <label className="flex-1">
-                <span className="text-sm font-semibold text-muted">Book name</span>
+                <span className="text-sm font-semibold text-muted">Document name</span>
                 <input
                   value={renameValue}
                   onChange={(event) => setRenameValue(event.target.value)}

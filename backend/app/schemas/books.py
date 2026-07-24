@@ -4,6 +4,8 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from app.services.listening_languages import ListeningLanguage
+
 
 PageClassification = Literal["embedded_text", "requires_ocr"]
 PdfClassification = Literal["text", "scanned", "mixed"]
@@ -47,6 +49,8 @@ class PdfPageResult(BookPageResult):
 class PdfUploadResult(BaseModel):
     book_id: str
     source_type: Literal["pdf"] = "pdf"
+    target_language: ListeningLanguage | None
+    tts_voice: str | None
     total_pages: int
     original_filename: str
     classification: PdfClassification
@@ -62,6 +66,8 @@ class ImagePageResult(BookPageResult):
 class ImageUploadResult(BaseModel):
     book_id: str
     source_type: Literal["images"] = "images"
+    target_language: ListeningLanguage | None
+    tts_voice: str | None
     total_pages: int
     ordered_image_filenames: list[str]
     pages: list[ImagePageResult]
@@ -102,6 +108,8 @@ class BookDetailResult(BaseModel):
     id: UUID
     title: str
     original_filename: str | None
+    target_language: ListeningLanguage | None
+    tts_voice: str | None
     source_type: Literal["pdf", "images"]
     total_pages: int
     processing_status: BookProcessingStatus
@@ -120,6 +128,8 @@ class BookLibraryItemResult(BaseModel):
     library_book_id: UUID
     title: str
     recording_title: str | None
+    target_language: ListeningLanguage | None
+    tts_voice: str | None
     original_filename: str | None
     source_type: Literal["pdf", "images"]
     total_pages: int
@@ -140,6 +150,7 @@ class BookLibraryFolderResult(BaseModel):
     total_pages: int
     processing_status: BookProcessingStatus
     processing_active: bool
+    target_languages: list[ListeningLanguage]
     latest_recording_at: datetime
     recordings: list[BookLibraryItemResult]
 
@@ -177,6 +188,8 @@ class AudioSegmentResult(BaseModel):
 class BookAudioResult(BaseModel):
     book_id: UUID
     title: str
+    target_language: ListeningLanguage | None
+    tts_voice: str | None
     processing_status: BookProcessingStatus
     processing_active: bool
     segments: list[AudioSegmentResult]

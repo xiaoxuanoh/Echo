@@ -1,3 +1,5 @@
+import type { ListeningLanguage } from "@/lib/listening-languages";
+
 export type PdfPageResult = {
   page_id: string;
   page_number: number;
@@ -14,6 +16,8 @@ export type PdfPageResult = {
 export type PdfUploadResult = {
   book_id: string;
   source_type: "pdf";
+  target_language: ListeningLanguage | null;
+  tts_voice: string | null;
   total_pages: number;
   original_filename: string;
   classification: "text" | "scanned" | "mixed";
@@ -37,6 +41,8 @@ export type ImagePageResult = {
 export type ImageUploadResult = {
   book_id: string;
   source_type: "images";
+  target_language: ListeningLanguage | null;
+  tts_voice: string | null;
   total_pages: number;
   ordered_image_filenames: string[];
   pages: ImagePageResult[];
@@ -81,6 +87,8 @@ export type BookDetail = {
   id: string;
   title: string;
   original_filename: string | null;
+  target_language: ListeningLanguage | null;
+  tts_voice: string | null;
   source_type: "pdf" | "images";
   total_pages: number;
   processing_status: BookProcessingStatus;
@@ -99,6 +107,8 @@ export type BookLibraryItem = {
   library_book_id: string;
   title: string;
   recording_title: string | null;
+  target_language: ListeningLanguage | null;
+  tts_voice: string | null;
   original_filename: string | null;
   source_type: "pdf" | "images";
   total_pages: number;
@@ -119,6 +129,7 @@ export type BookLibraryFolder = {
   total_pages: number;
   processing_status: BookProcessingStatus;
   processing_active: boolean;
+  target_languages: ListeningLanguage[];
   latest_recording_at: string;
   recordings: BookLibraryItem[];
 };
@@ -148,6 +159,8 @@ export type AudioSegment = {
 export type BookAudio = {
   book_id: string;
   title: string;
+  target_language: ListeningLanguage | null;
+  tts_voice: string | null;
   processing_status: BookProcessingStatus;
   processing_active: boolean;
   segments: AudioSegment[];

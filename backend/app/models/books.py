@@ -4,6 +4,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.services.listening_languages import ListeningLanguage
+
 
 BookSourceType = Literal["pdf", "images"]
 BookStatus = Literal[
@@ -69,6 +71,8 @@ class BookRecord(BaseModel):
     user_id: UUID | None = None
     title: str
     recording_title: str | None = None
+    target_language: ListeningLanguage | None = None
+    tts_voice: str | None = None
     original_filename: str | None = None
     source_type: BookSourceType
     source_storage_path: str | None = None

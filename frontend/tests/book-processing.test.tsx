@@ -8,6 +8,8 @@ const uploadedBook = {
   id: "book-id",
   title: "My book",
   original_filename: null,
+  target_language: "cantonese",
+  tts_voice: "zh-HK-HiuMaanNeural",
   source_type: "images",
   total_pages: 1,
   processing_status: "uploaded",
@@ -88,7 +90,7 @@ describe("book text preparation", () => {
     expect(screen.getByText("1 of 1 pages ready")).toBeVisible();
     expect(
       screen.getByText(
-        "All page text is prepared. You can now create local mock audio.",
+        "All page text is prepared. You can now create listening audio.",
       ),
     ).toBeVisible();
     expect(fetchMock).toHaveBeenCalledTimes(3);

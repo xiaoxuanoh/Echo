@@ -8,6 +8,7 @@ import type {
   PdfUploadResult,
   Rotation,
 } from "@/types/books";
+import type { ListeningLanguage } from "@/lib/listening-languages";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8001";
 
@@ -135,6 +136,7 @@ export function audioFileUrl(path: string): string {
 
 type UploadOptions = {
   libraryBookId?: string;
+  targetLanguage?: ListeningLanguage;
 };
 
 export async function uploadPdf(
@@ -144,6 +146,7 @@ export async function uploadPdf(
   const formData = new FormData();
   formData.append("file", file);
   if (options.libraryBookId) formData.append("library_book_id", options.libraryBookId);
+  if (options.targetLanguage) formData.append("target_language", options.targetLanguage);
   return parseResponse<PdfUploadResult>(
     await fetch(`${API_BASE_URL}/api/books/pdf`, {
       method: "POST",
@@ -160,6 +163,7 @@ export async function uploadImages(
   for (const page of pages) formData.append("files", page.file);
   formData.append("rotations", JSON.stringify(pages.map((page) => page.rotation)));
   if (options.libraryBookId) formData.append("library_book_id", options.libraryBookId);
+  if (options.targetLanguage) formData.append("target_language", options.targetLanguage);
   return parseResponse<ImageUploadResult>(
     await fetch(`${API_BASE_URL}/api/books/images`, {
       method: "POST",
