@@ -10,6 +10,21 @@ class LocalBookMetadataService:
 
     metadata_filename = "book.json"
 
+    def list_books(self, storage_root: Path) -> list[BookRecord]:
+        books: list[BookRecord] = []
+        if not storage_root.exists():
+            return books
+
+        for child in storage_root.iterdir():
+            if not child.is_dir():
+                continue
+            metadata_path = child / self.metadata_filename
+            if not metadata_path.exists():
+                continue
+            books.append(self.load(child))
+
+        return sorted(books, key=lambda book: book.updated_at, reverse=True)
+
     def load(self, book_directory: Path) -> BookRecord:
         source = book_directory / self.metadata_filename
         try:

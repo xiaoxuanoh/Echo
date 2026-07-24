@@ -94,6 +94,39 @@ export type BookDetail = {
   updated_at: string;
 };
 
+export type BookLibraryItem = {
+  id: string;
+  library_book_id: string;
+  title: string;
+  recording_title: string | null;
+  original_filename: string | null;
+  source_type: "pdf" | "images";
+  total_pages: number;
+  processing_status: BookProcessingStatus;
+  error_message: string | null;
+  completed_pages: number;
+  failed_pages: number;
+  audio_segment_count: number;
+  processing_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type BookLibraryFolder = {
+  id: string;
+  title: string;
+  recording_count: number;
+  total_pages: number;
+  processing_status: BookProcessingStatus;
+  processing_active: boolean;
+  latest_recording_at: string;
+  recordings: BookLibraryItem[];
+};
+
+export type BookLibrary = {
+  folders: BookLibraryFolder[];
+};
+
 export type BookProcessingAccepted = {
   book_id: string;
   processing_status: "extracting_text" | "running_ocr";

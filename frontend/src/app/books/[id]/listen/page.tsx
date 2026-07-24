@@ -13,12 +13,20 @@ export default async function ListenPage({
   return (
     <main className="flex-1 px-5 py-8 sm:px-8 sm:py-12">
       <div className="mx-auto max-w-5xl">
-        <Link
-          href={`/books/${id}`}
-          className="inline-flex min-h-11 items-center font-semibold text-accent underline-offset-4 hover:underline"
-        >
-          ← Back to book text
-        </Link>
+        <div className="flex flex-wrap gap-4">
+          <Link
+            href="/books"
+            className="inline-flex min-h-11 items-center font-semibold text-accent underline-offset-4 hover:underline"
+          >
+            ← Back to library
+          </Link>
+          <Link
+            href={`/books/${id}`}
+            className="inline-flex min-h-11 items-center font-semibold text-accent underline-offset-4 hover:underline"
+          >
+            Book text
+          </Link>
+        </div>
         <BookAudioPlayer bookId={id} />
       </div>
     </main>

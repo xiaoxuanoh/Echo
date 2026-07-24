@@ -65,8 +65,10 @@ class AudioSegmentRecord(BaseModel):
 
 class BookRecord(BaseModel):
     id: UUID
+    library_book_id: UUID | None = None
     user_id: UUID | None = None
     title: str
+    recording_title: str | None = None
     original_filename: str | None = None
     source_type: BookSourceType
     source_storage_path: str | None = None

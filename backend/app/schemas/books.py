@@ -115,6 +115,47 @@ class BookDetailResult(BaseModel):
     updated_at: datetime
 
 
+class BookLibraryItemResult(BaseModel):
+    id: UUID
+    library_book_id: UUID
+    title: str
+    recording_title: str | None
+    original_filename: str | None
+    source_type: Literal["pdf", "images"]
+    total_pages: int
+    processing_status: BookProcessingStatus
+    error_message: str | None
+    completed_pages: int
+    failed_pages: int
+    audio_segment_count: int
+    processing_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class BookLibraryFolderResult(BaseModel):
+    id: UUID
+    title: str
+    recording_count: int
+    total_pages: int
+    processing_status: BookProcessingStatus
+    processing_active: bool
+    latest_recording_at: datetime
+    recordings: list[BookLibraryItemResult]
+
+
+class BookLibraryResult(BaseModel):
+    folders: list[BookLibraryFolderResult]
+
+
+class BookRenameRequest(BaseModel):
+    title: str
+
+
+class BookMutationResult(BaseModel):
+    message: str
+
+
 class BookProcessingAccepted(BaseModel):
     book_id: UUID
     processing_status: Literal["extracting_text", "running_ocr"]

@@ -23,8 +23,13 @@ from app.schemas.books import (
     AudioSegmentResult,
     BookAudioResult,
     BookDetailResult,
+    BookLibraryFolderResult,
+    BookLibraryItemResult,
+    BookLibraryResult,
+    BookMutationResult,
     BookPageDetailResult,
     BookProcessingAccepted,
+    BookRenameRequest,
     ImagePageResult,
     ImageUploadResult,
     OcrLineResult,
@@ -119,6 +124,117 @@ def _book_result(
         created_at=book.created_at,
         updated_at=book.updated_at,
     )
+
+
+def _library_item_result(
+    book: BookRecord,
+    *,
+    library_book_id: UUID | None = None,
+    processing_active: bool = False,
+) -> BookLibraryItemResult:
+    return BookLibraryItemResult(
+        id=book.id,
+        library_book_id=library_book_id or book.library_book_id or book.id,
+        title=book.title,
+        recording_title=book.recording_title,
+        original_filename=book.original_filename,
+        source_type=book.source_type,
+        total_pages=book.total_pages,
+        processing_status=book.status,
+        error_message=book.error_message,
+        completed_pages=sum(
+            page.processing_status == "completed" for page in book.pages
+        ),
+        failed_pages=sum(page.processing_status == "failed" for page in book.pages),
+        audio_segment_count=len(book.audio_segments),
+        processing_active=processing_active,
+        created_at=book.created_at,
+        updated_at=book.updated_at,
+    )
+
+
+def _folder_status(recordings: list[BookRecord]) -> str:
+    statuses = [recording.status for recording in recordings]
+    for status_name in (
+        "generating_audio",
+        "running_ocr",
+        "extracting_text",
+        "inspecting",
+        "normalizing_pages",
+    ):
+        if status_name in statuses:
+            return status_name
+    if "failed" in statuses:
+        return "failed"
+    if "ready" in statuses:
+        return "ready"
+    if "text_ready" in statuses:
+        return "text_ready"
+    return statuses[0]
+
+
+def _library_folders(
+    books: list[BookRecord],
+    registry: LocalBookJobRegistry,
+) -> list[BookLibraryFolderResult]:
+    assigned_groups: dict[UUID, list[BookRecord]] = {}
+    title_groups: dict[str, list[BookRecord]] = {}
+
+    for book in books:
+        if book.library_book_id is not None and book.library_book_id != book.id:
+            assigned_groups.setdefault(book.library_book_id, []).append(book)
+        else:
+            title_groups.setdefault(book.title.strip().casefold(), []).append(book)
+
+    groups = list(assigned_groups.items())
+    for group_books in title_groups.values():
+        folder_id = min(group_books, key=lambda item: item.created_at).id
+        groups.append((folder_id, group_books))
+
+    folders: list[BookLibraryFolderResult] = []
+    for folder_id, recordings in groups:
+        sorted_recordings = sorted(
+            recordings,
+            key=lambda item: item.updated_at,
+            reverse=True,
+        )
+        processing_active = any(registry.is_active(recording.id) for recording in recordings)
+        folders.append(
+            BookLibraryFolderResult(
+                id=folder_id,
+                title=sorted_recordings[0].title,
+                recording_count=len(recordings),
+                total_pages=sum(recording.total_pages for recording in recordings),
+                processing_status=_folder_status(sorted_recordings),
+                processing_active=processing_active,
+                latest_recording_at=sorted_recordings[0].updated_at,
+                recordings=[
+                    _library_item_result(
+                        recording,
+                        library_book_id=folder_id,
+                        processing_active=registry.is_active(recording.id),
+                    )
+                    for recording in sorted_recordings
+                ],
+            )
+        )
+
+    return sorted(folders, key=lambda folder: folder.latest_recording_at, reverse=True)
+
+
+def _folder_recordings(storage_root: Path, folder_id: UUID) -> list[BookRecord]:
+    metadata = LocalBookMetadataService()
+    books = metadata.list_books(storage_root)
+    folders = _library_folders(books, LocalBookJobRegistry())
+    folder = next((candidate for candidate in folders if candidate.id == folder_id), None)
+    if folder is None:
+        raise EchoError(
+            "library_book_not_found",
+            "Echo could not find that local book folder.",
+            status_code=404,
+        )
+    recording_ids = {recording.id for recording in folder.recordings}
+    return [book for book in books if book.id in recording_ids]
 
 
 def _audio_result(
@@ -303,6 +419,7 @@ async def upload_pdf(
 
         metadata = BookRecord(
             id=book_id,
+            library_book_id=book_id,
             title=Path(file.filename or "book.pdf").stem or "Untitled book",
             original_filename=file.filename or "book.pdf",
             source_type="pdf",
@@ -444,6 +561,7 @@ async def upload_images(
 
         metadata = BookRecord(
             id=book_id,
+            library_book_id=book_id,
             title=(
                 Path(page_records[0].original_filename or "Page photo book").stem
                 or "Page photo book"
@@ -466,6 +584,82 @@ async def upload_images(
         ordered_image_filenames=[page.original_filename for page in page_results],
         pages=page_results,
     )
+
+
+@router.get("", response_model=BookLibraryResult)
+def list_books(request: Request) -> BookLibraryResult:
+    settings = request.app.state.settings
+    registry: LocalBookJobRegistry = request.app.state.book_job_registry
+    books = LocalBookMetadataService().list_books(settings.local_storage_path)
+    return BookLibraryResult(folders=_library_folders(books, registry))
+
+
+@router.patch("/folders/{folder_id}", response_model=BookMutationResult)
+def rename_book_folder(
+    request: Request,
+    folder_id: UUID,
+    payload: BookRenameRequest,
+) -> BookMutationResult:
+    title = payload.title.strip()
+    if not title:
+        raise EchoError(
+            "book_title_required",
+            "Enter a name for this book.",
+            status_code=422,
+        )
+
+    settings = request.app.state.settings
+    metadata = LocalBookMetadataService()
+    now = datetime.now(UTC)
+    for recording in _folder_recordings(settings.local_storage_path, folder_id):
+        recording.title = title
+        recording.library_book_id = folder_id
+        recording.updated_at = now
+        metadata.save(settings.local_storage_path / str(recording.id), recording)
+
+    return BookMutationResult(message="Echo renamed this local book.")
+
+
+@router.delete("/folders/{folder_id}", response_model=BookMutationResult)
+def delete_book_folder(request: Request, folder_id: UUID) -> BookMutationResult:
+    settings = request.app.state.settings
+    for recording in _folder_recordings(settings.local_storage_path, folder_id):
+        shutil.rmtree(settings.local_storage_path / str(recording.id), ignore_errors=True)
+
+    return BookMutationResult(message="Echo removed this local book.")
+
+
+@router.delete("/{book_id}", response_model=BookMutationResult)
+def delete_recording(request: Request, book_id: UUID) -> BookMutationResult:
+    settings = request.app.state.settings
+    book_directory = settings.local_storage_path / str(book_id)
+    LocalBookMetadataService().load(book_directory)
+    shutil.rmtree(book_directory, ignore_errors=True)
+    return BookMutationResult(message="Echo removed this recording.")
+
+
+@router.patch("/{book_id}", response_model=BookMutationResult)
+def rename_recording(
+    request: Request,
+    book_id: UUID,
+    payload: BookRenameRequest,
+) -> BookMutationResult:
+    title = payload.title.strip()
+    if not title:
+        raise EchoError(
+            "recording_title_required",
+            "Enter a name for this recording.",
+            status_code=422,
+        )
+
+    settings = request.app.state.settings
+    metadata = LocalBookMetadataService()
+    book_directory = settings.local_storage_path / str(book_id)
+    recording = metadata.load(book_directory)
+    recording.recording_title = title
+    recording.updated_at = datetime.now(UTC)
+    metadata.save(book_directory, recording)
+    return BookMutationResult(message="Echo renamed this recording.")
 
 
 @router.get("/{book_id}", response_model=BookDetailResult)

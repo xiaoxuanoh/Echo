@@ -14,6 +14,7 @@ type SavedProgress = {
   segmentNumber: number;
   positionSeconds: number;
   playbackSpeed: number;
+  completed?: boolean;
 };
 
 function progressKey(bookId: string): string {
@@ -46,6 +47,7 @@ export function BookAudioPlayer({ bookId }: { bookId: string }) {
   const [bookAudio, setBookAudio] = useState<BookAudio | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [completed, setCompleted] = useState(false);
   const [pendingSeek, setPendingSeek] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState(false);
@@ -68,6 +70,7 @@ export function BookAudioPlayer({ bookId }: { bookId: string }) {
           if (Number.isFinite(progress.playbackSpeed)) {
             setPlaybackSpeed(progress.playbackSpeed);
           }
+          setCompleted(progress.completed === true);
           if (Number.isFinite(progress.positionSeconds)) {
             setPendingSeek(progress.positionSeconds);
           }
@@ -113,7 +116,7 @@ export function BookAudioPlayer({ bookId }: { bookId: string }) {
     audio.playbackRate = playbackSpeed;
   }, [playbackSpeed, currentSegment]);
 
-  function saveProgress(positionSeconds?: number) {
+  function saveProgress(positionSeconds?: number, isCompleted = completed) {
     if (!currentSegment) return;
     window.localStorage.setItem(
       progressKey(bookId),
@@ -121,6 +124,7 @@ export function BookAudioPlayer({ bookId }: { bookId: string }) {
         segmentNumber: currentSegment.segment_number,
         positionSeconds: positionSeconds ?? audioRef.current?.currentTime ?? 0,
         playbackSpeed,
+        completed: isCompleted,
       }),
     );
   }
@@ -144,7 +148,15 @@ export function BookAudioPlayer({ bookId }: { bookId: string }) {
 
   function moveTo(nextIndex: number) {
     if (nextIndex < 0 || nextIndex >= segments.length) return;
+    setCompleted(false);
     setCurrentIndex(nextIndex);
+    setPendingSeek(0);
+  }
+
+  function startOver() {
+    if (segments.length === 0) return;
+    setCompleted(false);
+    setCurrentIndex(0);
     setPendingSeek(0);
   }
 
@@ -286,7 +298,12 @@ export function BookAudioPlayer({ bookId }: { bookId: string }) {
             }}
             onTimeUpdate={() => saveProgress()}
             onEnded={() => {
-              saveProgress(0);
+              if (currentIndex >= segments.length - 1) {
+                setCompleted(true);
+                saveProgress(0, true);
+                return;
+              }
+              saveProgress(0, false);
               moveTo(currentIndex + 1);
             }}
           />
@@ -308,7 +325,22 @@ export function BookAudioPlayer({ bookId }: { bookId: string }) {
             >
               Next segment
             </button>
+            {completed && (
+              <button
+                type="button"
+                onClick={startOver}
+                className="min-h-11 rounded-lg bg-accent px-4 font-semibold text-white hover:bg-accent-dark"
+              >
+                Start over
+              </button>
+            )}
           </div>
+
+          {completed && (
+            <p className="mt-4 rounded-xl border border-[#a9c5b3] bg-[#f4faf5] p-4 text-[#376247]">
+              Finished this book.
+            </p>
+          )}
 
           <details className="mt-6 rounded-xl bg-[#f8f6f0] p-4">
             <summary className="cursor-pointer font-semibold">

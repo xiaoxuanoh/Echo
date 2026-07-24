@@ -2,6 +2,7 @@ import type {
   AudioProcessingAccepted,
   BookAudio,
   BookDetail,
+  BookLibrary,
   BookProcessingAccepted,
   ImageUploadResult,
   PdfUploadResult,
@@ -29,6 +30,59 @@ export async function getBook(bookId: string): Promise<BookDetail> {
   return parseResponse<BookDetail>(
     await fetch(`${API_BASE_URL}/api/books/${bookId}`, { cache: "no-store" }),
     "Echo could not load this temporary book.",
+  );
+}
+
+export async function getBookLibrary(): Promise<BookLibrary> {
+  return parseResponse<BookLibrary>(
+    await fetch(`${API_BASE_URL}/api/books`, { cache: "no-store" }),
+    "Echo could not load your local library.",
+  );
+}
+
+export async function renameBookFolder(
+  folderId: string,
+  title: string,
+): Promise<void> {
+  await parseResponse<{ message: string }>(
+    await fetch(`${API_BASE_URL}/api/books/folders/${folderId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title }),
+    }),
+    "Echo could not rename this book.",
+  );
+}
+
+export async function deleteBookFolder(folderId: string): Promise<void> {
+  await parseResponse<{ message: string }>(
+    await fetch(`${API_BASE_URL}/api/books/folders/${folderId}`, {
+      method: "DELETE",
+    }),
+    "Echo could not remove this book.",
+  );
+}
+
+export async function deleteBookRecording(bookId: string): Promise<void> {
+  await parseResponse<{ message: string }>(
+    await fetch(`${API_BASE_URL}/api/books/${bookId}`, {
+      method: "DELETE",
+    }),
+    "Echo could not remove this recording.",
+  );
+}
+
+export async function renameBookRecording(
+  bookId: string,
+  title: string,
+): Promise<void> {
+  await parseResponse<{ message: string }>(
+    await fetch(`${API_BASE_URL}/api/books/${bookId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title }),
+    }),
+    "Echo could not rename this recording.",
   );
 }
 

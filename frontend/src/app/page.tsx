@@ -15,12 +15,20 @@ export default function Home() {
             Upload a PDF or add photos of each page. Echo will prepare the
             pages in order, ready for Cantonese audio in a later step.
           </p>
-          <Link
-            href="/books/new"
-            className="mt-9 inline-flex min-h-14 items-center justify-center rounded-xl bg-accent px-7 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-accent-dark"
-          >
-            Upload your book
-          </Link>
+          <div className="mt-9 flex flex-wrap gap-3">
+            <Link
+              href="/books"
+              className="inline-flex min-h-14 items-center justify-center rounded-xl bg-accent px-7 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-accent-dark"
+            >
+              Open library
+            </Link>
+            <Link
+              href="/books/new"
+              className="inline-flex min-h-14 items-center justify-center rounded-xl border border-border bg-surface px-7 py-3 text-base font-semibold text-foreground transition hover:bg-[#f8f6f0]"
+            >
+              Upload your book
+            </Link>
+          </div>
         </section>
 
         <section

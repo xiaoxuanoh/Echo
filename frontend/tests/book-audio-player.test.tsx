@@ -131,4 +131,25 @@ describe("book audio player", () => {
       screen.getByText("Audio creation appears to have stopped. Continue to resume it."),
     ).toBeVisible();
   });
+
+  it("marks the book finished after the final segment ends", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(readyAudio));
+    const { container } = render(<BookAudioPlayer bookId="book-id" />);
+
+    expect(await screen.findByRole("heading", { name: "Segment 1" })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Next segment" }));
+    fireEvent.ended(container.querySelector("audio") as HTMLAudioElement);
+
+    expect(screen.getByText("Finished this book.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Start over" })).toBeVisible();
+    expect(
+      JSON.parse(
+        window.localStorage.getItem("echo:book-id:listening-progress") ?? "{}",
+      ),
+    ).toMatchObject({
+      segmentNumber: 2,
+      positionSeconds: 0,
+      completed: true,
+    });
+  });
 });
