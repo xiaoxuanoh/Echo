@@ -286,6 +286,8 @@ def _audio_result(
     return BookAudioResult(
         book_id=book.id,
         title=book.title,
+        recording_title=book.recording_title,
+        original_filename=book.original_filename,
         target_language=book.target_language,
         tts_voice=book.tts_voice,
         processing_status=book.status,

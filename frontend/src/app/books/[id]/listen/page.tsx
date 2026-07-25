@@ -24,7 +24,7 @@ export default async function ListenPage({
             href={`/books/${id}`}
             className="inline-flex min-h-11 items-center font-semibold text-accent underline-offset-4 hover:underline"
           >
-            Book text
+            Raw text
           </Link>
         </div>
         <BookAudioPlayer bookId={id} />

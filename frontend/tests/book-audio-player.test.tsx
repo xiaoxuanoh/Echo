@@ -7,6 +7,8 @@ import { BookAudioPlayer } from "@/components/books/book-audio-player";
 const textReadyAudio = {
   book_id: "book-id",
   title: "My book",
+  recording_title: null,
+  original_filename: "my-book.pdf",
   target_language: "cantonese",
   tts_voice: "zh-HK-HiuMaanNeural",
   processing_status: "text_ready",
@@ -102,6 +104,54 @@ describe("book audio player", () => {
     expect(screen.getByText("Page 1")).toBeVisible();
     expect(screen.getByRole("heading", { name: "Part 1" })).toBeVisible();
     expect(fetchMock.mock.calls[1][0]).toContain("/prepare-audio");
+  });
+
+  it("shows the recording name with the saved upload as context", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({
+        ...readyAudio,
+        title: "Echo test",
+        recording_title: "Chapter 1",
+        original_filename: "chapter-1.pdf",
+      }),
+    );
+
+    render(<BookAudioPlayer bookId="book-id" />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Chapter 1" }),
+    ).toBeVisible();
+    expect(screen.getByText("from Echo test")).toBeVisible();
+  });
+
+  it("renames the current recording from the listening page", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(readyAudio))
+      .mockResolvedValueOnce(jsonResponse({ message: "renamed" }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          ...readyAudio,
+          recording_title: "Chapter 1",
+        }),
+    );
+
+    render(<BookAudioPlayer bookId="book-id" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Rename recording" }));
+    fireEvent.change(screen.getByLabelText("Recording name"), {
+      target: { value: "Chapter 1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save name" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Chapter 1" }),
+    ).toBeVisible();
+    expect(fetchMock.mock.calls[1][0]).toContain("/api/books/book-id");
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: "PATCH" });
+    expect(fetchMock.mock.calls[1][1]?.body).toBe(
+      JSON.stringify({ title: "Chapter 1" }),
+    );
   });
 
   it("moves between ready audio segments", async () => {

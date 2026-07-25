@@ -159,6 +159,8 @@ export type AudioSegment = {
 export type BookAudio = {
   book_id: string;
   title: string;
+  recording_title: string | null;
+  original_filename: string | null;
   target_language: ListeningLanguage | null;
   tts_voice: string | null;
   processing_status: BookProcessingStatus;

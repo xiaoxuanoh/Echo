@@ -233,6 +233,10 @@ def test_renames_one_recording(
     recording = client.get("/api/books").json()["folders"][0]["recordings"][0]
     assert recording["title"] == "chapter"
     assert recording["recording_title"] == "Chapter one"
+    audio = client.get(f"/api/books/{upload['book_id']}/audio").json()
+    assert audio["title"] == "chapter"
+    assert audio["recording_title"] == "Chapter one"
+    assert audio["original_filename"] == "chapter.pdf"
 
 
 def test_deletes_a_local_book_folder(

@@ -188,6 +188,8 @@ class AudioSegmentResult(BaseModel):
 class BookAudioResult(BaseModel):
     book_id: UUID
     title: str
+    recording_title: str | None
+    original_filename: str | None
     target_language: ListeningLanguage | None
     tts_voice: str | None
     processing_status: BookProcessingStatus
