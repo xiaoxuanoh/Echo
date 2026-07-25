@@ -154,6 +154,19 @@ describe("book audio player", () => {
     );
   });
 
+  it("links to the full recording audio download", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(readyAudio));
+
+    render(<BookAudioPlayer bookId="book-id" />);
+
+    expect(
+      await screen.findByRole("link", { name: "Download recording" }),
+    ).toHaveAttribute(
+      "href",
+      "http://localhost:8001/api/books/book-id/audio/download",
+    );
+  });
+
   it("moves between ready audio segments", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(readyAudio));
     const { container } = render(<BookAudioPlayer bookId="book-id" />);

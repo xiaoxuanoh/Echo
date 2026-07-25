@@ -6,6 +6,7 @@ import {
   audioFileUrl,
   getBookAudio,
   prepareBookAudio,
+  recordingAudioDownloadUrl,
   renameBookRecording,
 } from "@/lib/api";
 import type { AudioSegment, BookAudio, BookProcessingStatus } from "@/types/books";
@@ -237,7 +238,7 @@ export function BookAudioPlayer({ bookId }: { bookId: string }) {
                 : "No listening audio yet"}
             </p>
           </div>
-          <div className="flex items-start gap-2">
+          <div className="flex flex-col items-stretch gap-2 sm:items-end">
             {canStart && (
               <button
                 type="button"
@@ -262,6 +263,15 @@ export function BookAudioPlayer({ bookId }: { bookId: string }) {
             >
               Rename recording
             </button>
+            {segments.length > 0 && (
+              <a
+                href={recordingAudioDownloadUrl(bookAudio.book_id)}
+                download
+                className="inline-flex min-h-11 items-center justify-center rounded-lg border border-border bg-white px-4 font-semibold hover:bg-[#f8f6f0]"
+              >
+                Download recording
+              </a>
+            )}
           </div>
         </div>
 

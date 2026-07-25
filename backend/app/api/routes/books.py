@@ -1,7 +1,10 @@
 import json
 import shutil
+import zipfile
+from io import BytesIO
 from datetime import UTC, datetime
 from pathlib import Path
+import re
 from uuid import UUID, uuid4
 
 from fastapi import (
@@ -14,7 +17,7 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 from app.core.errors import EchoError
 from app.models.books import BookPageRecord, BookRecord
@@ -56,6 +59,14 @@ from app.services.tts import create_tts_provider
 
 
 router = APIRouter(prefix="/api/books", tags=["books"])
+
+
+def _download_filename(value: str | None, fallback: str) -> str:
+    if value is None:
+        return fallback
+    stem = Path(value).stem or value
+    filename = re.sub(r"[^A-Za-z0-9._-]+", "-", stem).strip(".-")
+    return filename or fallback
 
 
 def _page_image_path(book_directory: Path, relative_path: str | None) -> Path:
@@ -837,6 +848,59 @@ def get_audio_file(
         )
     media_type = "audio/mpeg" if audio_path.suffix == ".mp3" else "audio/wav"
     return FileResponse(audio_path, media_type=media_type, filename=audio_path.name)
+
+
+@router.get("/{book_id}/audio/download")
+def download_recording_audio(request: Request, book_id: UUID) -> Response:
+    settings = request.app.state.settings
+    book_directory = settings.local_storage_path / str(book_id)
+    book = LocalBookMetadataService().load(book_directory)
+    book_root = book_directory.resolve()
+    ready_segments = [
+        segment
+        for segment in sorted(book.audio_segments, key=lambda item: item.segment_number)
+        if segment.processing_status == "completed" and segment.audio_storage_path is not None
+    ]
+    if not ready_segments:
+        raise EchoError(
+            "audio_not_found",
+            "Echo could not find audio to download for this recording.",
+            status_code=404,
+        )
+
+    archive = BytesIO()
+    with zipfile.ZipFile(archive, mode="w", compression=zipfile.ZIP_DEFLATED) as zip_file:
+        for segment in ready_segments:
+            audio_path = (book_directory / str(segment.audio_storage_path)).resolve()
+            if not audio_path.is_relative_to(book_root):
+                raise EchoError(
+                    "audio_path_invalid",
+                    "The audio file path is invalid.",
+                    status_code=500,
+                )
+            if not audio_path.exists():
+                raise EchoError(
+                    "audio_file_missing",
+                    "Echo could not find one of the local audio files.",
+                    status_code=404,
+                )
+            extension = audio_path.suffix or ".wav"
+            zip_file.write(
+                audio_path,
+                arcname=f"part-{segment.segment_number:03d}{extension}",
+            )
+
+    filename = _download_filename(
+        book.recording_title or book.original_filename or book.title,
+        "echo-recording-audio",
+    )
+    return Response(
+        content=archive.getvalue(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}.zip"',
+        },
+    )
 
 
 @router.post(

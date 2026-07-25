@@ -1,6 +1,8 @@
 from datetime import UTC, datetime
+from io import BytesIO
 from pathlib import Path
 from uuid import uuid4
+from zipfile import ZipFile
 
 from fastapi.testclient import TestClient
 
@@ -242,6 +244,34 @@ def test_returns_mock_audio_file(client: TestClient) -> None:
     assert response.status_code == 200
     assert response.headers["content-type"] == "audio/wav"
     assert response.content.startswith(b"RIFF")
+
+
+def test_downloads_ready_recording_audio_as_zip(client: TestClient) -> None:
+    upload = client.post(
+        "/api/books/pdf",
+        files={
+            "file": (
+                "chapter-one.pdf",
+                make_pdf(["First playable page.", "Second playable page."]),
+                "application/pdf",
+            )
+        },
+    ).json()
+    client.post(f"/api/books/{upload['book_id']}/process-text")
+    client.post(f"/api/books/{upload['book_id']}/prepare-audio")
+
+    response = client.get(f"/api/books/{upload['book_id']}/audio/download")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/zip"
+    assert (
+        response.headers["content-disposition"]
+        == 'attachment; filename="chapter-one.zip"'
+    )
+    with ZipFile(BytesIO(response.content)) as archive:
+        assert archive.namelist() == ["part-001.wav", "part-002.wav"]
+        assert archive.read("part-001.wav").startswith(b"RIFF")
+        assert archive.read("part-002.wav").startswith(b"RIFF")
 
 
 def test_rejects_audio_before_text_is_ready(client: TestClient) -> None:

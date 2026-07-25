@@ -134,6 +134,10 @@ export function audioFileUrl(path: string): string {
   return `${API_BASE_URL}${path}`;
 }
 
+export function recordingAudioDownloadUrl(bookId: string): string {
+  return `${API_BASE_URL}/api/books/${bookId}/audio/download`;
+}
+
 type UploadOptions = {
   libraryBookId?: string;
   targetLanguage?: ListeningLanguage;
