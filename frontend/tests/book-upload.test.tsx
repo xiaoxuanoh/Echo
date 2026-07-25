@@ -77,7 +77,7 @@ describe("page photo workflow", () => {
 
     fireEvent.click(screen.getAllByRole("button", { name: "Rotate right" })[0]);
     fireEvent.click(screen.getAllByRole("button", { name: "Later" })[0]);
-    fireEvent.click(screen.getByRole("button", { name: "Prepare your document" }));
+    fireEvent.click(screen.getByRole("button", { name: "Prepare your upload" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
     const request = fetchMock.mock.calls[0][1];
@@ -91,7 +91,7 @@ describe("page photo workflow", () => {
     expect(screen.getByText("Page 1 · page-two.png")).toBeVisible();
     expect(screen.getAllByText("Image ready for text reading")).toHaveLength(2);
     expect(
-      screen.getByRole("link", { name: "Continue preparing your document" }),
+      screen.getByRole("link", { name: "Review upload" }),
     ).toHaveAttribute("href", "/books/temporary-book-id");
   });
 
@@ -125,10 +125,16 @@ describe("page photo workflow", () => {
     fireEvent.change(screen.getByLabelText("Choose PDF"), {
       target: { files: [pdf] },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Prepare your document" }));
+    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+    fireEvent.change(screen.getByLabelText("PDF name"), {
+      target: { value: "chapter-two-renamed" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save name" }));
+    fireEvent.click(screen.getByRole("button", { name: "Prepare your upload" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
     const body = fetchMock.mock.calls[0][1]?.body as FormData;
+    expect((body.get("file") as File).name).toBe("chapter-two-renamed.pdf");
     expect(body.get("library_book_id")).toBe("folder-id");
     expect(body.get("target_language")).toBe("mandarin");
     expect(await screen.findByText("Your new recording is prepared")).toBeVisible();

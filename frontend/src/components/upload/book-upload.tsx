@@ -46,6 +46,19 @@ const classificationLabels = {
   mixed: "Mixed PDF",
 };
 
+function normalizedPdfFilename(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) return "";
+  return trimmed.toLowerCase().endsWith(".pdf") ? trimmed : `${trimmed}.pdf`;
+}
+
+function renamedPdfFile(file: File, name: string): File {
+  return new File([file], name, {
+    type: file.type || "application/pdf",
+    lastModified: file.lastModified,
+  });
+}
+
 function nextRotation(current: Rotation, direction: "left" | "right"): Rotation {
   const amount = direction === "right" ? 90 : 270;
   return ((current + amount) % 360) as Rotation;
@@ -147,12 +160,15 @@ function SortablePage({
 function UploadResultCard({
   result,
   libraryBookTitle,
+  cardRef,
 }: {
   result: UploadResult;
   libraryBookTitle?: string;
+  cardRef: React.RefObject<HTMLElement | null>;
 }) {
   return (
     <section
+      ref={cardRef}
       className="mt-8 rounded-2xl border border-[#a9c5b3] bg-[#f4faf5] p-6"
       aria-live="polite"
     >
@@ -235,7 +251,7 @@ function UploadResultCard({
         href={`/books/${result.book_id}`}
         className="mt-5 inline-flex min-h-12 items-center rounded-xl bg-accent px-6 py-3 font-semibold text-white shadow-sm transition hover:bg-accent-dark"
       >
-        Continue preparing your document
+        Review upload
       </Link>
     </section>
   );
@@ -255,12 +271,16 @@ export function BookUpload({
     isListeningLanguage(initialLanguage) ? initialLanguage : defaultListeningLanguage,
   );
   const [pdf, setPdf] = useState<File | null>(null);
+  const [pdfName, setPdfName] = useState("");
+  const [pdfNameDraft, setPdfNameDraft] = useState("");
+  const [editingPdfName, setEditingPdfName] = useState(false);
   const [images, setImages] = useState<PendingImage[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<UploadResult | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const previewUrls = useRef(new Set<string>());
   const imageInput = useRef<HTMLInputElement>(null);
+  const resultCardRef = useRef<HTMLElement>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -270,6 +290,23 @@ export function BookUpload({
     const urls = previewUrls.current;
     return () => urls.forEach((url) => URL.revokeObjectURL(url));
   }, []);
+
+  useEffect(() => {
+    if (
+      !result ||
+      !resultCardRef.current ||
+      typeof resultCardRef.current.scrollIntoView !== "function" ||
+      typeof window === "undefined"
+    ) {
+      return;
+    }
+
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    resultCardRef.current.scrollIntoView({
+      behavior: reduceMotion ? "auto" : "smooth",
+      block: "start",
+    });
+  }, [result]);
 
   function chooseMode(nextMode: Mode) {
     setMode(nextMode);
@@ -285,6 +322,22 @@ export function BookUpload({
       return;
     }
     setPdf(file);
+    setPdfName(file.name);
+    setPdfNameDraft(file.name);
+    setEditingPdfName(false);
+    setError(null);
+    setResult(null);
+  }
+
+  function savePdfName() {
+    const nextName = normalizedPdfFilename(pdfNameDraft);
+    if (!nextName) {
+      setError("Please enter a PDF name.");
+      return;
+    }
+    setPdfName(nextName);
+    setPdfNameDraft(nextName);
+    setEditingPdfName(false);
     setError(null);
     setResult(null);
   }
@@ -352,6 +405,11 @@ export function BookUpload({
       setError("Please choose a PDF first.");
       return;
     }
+    const submittedPdfName = normalizedPdfFilename(pdfName);
+    if (mode === "pdf" && !submittedPdfName) {
+      setError("Please enter a PDF name.");
+      return;
+    }
     if (mode === "images" && images.length === 0) {
       setError("Please add at least one page image.");
       return;
@@ -361,7 +419,10 @@ export function BookUpload({
     try {
       const uploadResult =
         mode === "pdf"
-          ? await uploadPdf(pdf as File, { libraryBookId, targetLanguage })
+          ? await uploadPdf(renamedPdfFile(pdf as File, submittedPdfName), {
+              libraryBookId,
+              targetLanguage,
+            })
           : await uploadImages(images, { libraryBookId, targetLanguage });
       setResult(uploadResult);
     } catch (caught) {
@@ -445,20 +506,79 @@ export function BookUpload({
           <p className="mt-3 text-sm text-muted">Maximum size: 50 MB</p>
           {pdf && (
             <div className="mx-auto mt-6 max-w-xl rounded-xl border border-border bg-[#f8f6f0] p-4 text-left">
-              <p className="break-all font-medium">{pdf.name}</p>
+              {editingPdfName ? (
+                <div className="mt-3">
+                  <label
+                    htmlFor="pdf-name"
+                    className="text-sm font-semibold text-muted"
+                  >
+                    PDF name
+                  </label>
+                  <input
+                    id="pdf-name"
+                    value={pdfNameDraft}
+                    onChange={(event) => {
+                      setPdfNameDraft(event.target.value);
+                      setResult(null);
+                    }}
+                    className="mt-2 min-h-11 w-full rounded-lg border border-border bg-white px-3"
+                  />
+                  <div className="mt-3 flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      className="text-sm font-semibold text-accent underline underline-offset-4"
+                      onClick={savePdfName}
+                    >
+                      Save name
+                    </button>
+                    <button
+                      type="button"
+                      className="text-sm font-semibold text-muted underline underline-offset-4"
+                      onClick={() => {
+                        setPdfNameDraft(pdfName);
+                        setEditingPdfName(false);
+                        setError(null);
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <p className="text-sm font-semibold text-muted">Upload name</p>
+                  <p className="mt-1 break-all font-medium">{pdfName}</p>
+                </>
+              )}
               <p className="mt-1 text-sm text-muted">
                 {(pdf.size / 1024 / 1024).toFixed(2)} MB
               </p>
-              <button
-                type="button"
-                className="mt-3 text-sm font-semibold text-[#8a3e35] underline underline-offset-4"
-                onClick={() => {
-                  setPdf(null);
-                  setResult(null);
-                }}
-              >
-                Remove PDF
-              </button>
+              <div className="mt-3 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  className="text-sm font-semibold text-accent underline underline-offset-4"
+                  onClick={() => {
+                    setPdfNameDraft(pdfName);
+                    setEditingPdfName(true);
+                    setError(null);
+                  }}
+                >
+                  Rename
+                </button>
+                <button
+                  type="button"
+                  className="text-sm font-semibold text-[#8a3e35] underline underline-offset-4"
+                  onClick={() => {
+                    setPdf(null);
+                    setPdfName("");
+                    setPdfNameDraft("");
+                    setEditingPdfName(false);
+                    setResult(null);
+                  }}
+                >
+                  Remove PDF
+                </button>
+              </div>
             </div>
           )}
         </section>
@@ -533,13 +653,23 @@ export function BookUpload({
         type="button"
         disabled={submitting}
         onClick={submit}
-        className="mt-7 min-h-14 w-full rounded-xl bg-accent px-7 py-3 font-semibold text-white shadow-sm transition hover:bg-accent-dark disabled:cursor-wait disabled:opacity-60 sm:w-auto"
+        className="mt-7 inline-flex min-h-14 w-full items-center justify-center gap-3 rounded-xl bg-accent px-7 py-3 font-semibold text-white shadow-sm transition hover:bg-accent-dark disabled:cursor-wait disabled:opacity-60 sm:w-auto"
       >
-        {submitting ? "Preparing your document..." : "Prepare your document"}
+        {submitting && (
+          <span
+            aria-hidden="true"
+            className="size-4 rounded-full border-2 border-white/40 border-t-white motion-safe:animate-spin"
+          />
+        )}
+        {submitting ? "Preparing upload..." : "Prepare your upload"}
       </button>
 
       {result && (
-        <UploadResultCard result={result} libraryBookTitle={libraryBookTitle} />
+        <UploadResultCard
+          result={result}
+          libraryBookTitle={libraryBookTitle}
+          cardRef={resultCardRef}
+        />
       )}
     </div>
   );
