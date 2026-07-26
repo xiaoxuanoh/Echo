@@ -140,4 +140,124 @@ describe("page photo workflow", () => {
     expect(await screen.findByText("Your new recording is prepared")).toBeVisible();
     expect(screen.getByText("Ready book")).toBeVisible();
   });
+
+  it("assigns a new upload to an existing folder from the modal", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            book_id: "new-recording-id",
+            source_type: "pdf",
+            target_language: "cantonese",
+            tts_voice: "zh-HK-HiuMaanNeural",
+            total_pages: 1,
+            original_filename: "chapter.pdf",
+            classification: "text",
+            pages: [],
+            processing_status: "uploaded",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            folders: [
+              {
+                id: "new-recording-id",
+                title: "chapter",
+                recording_count: 1,
+                total_pages: 1,
+                processing_status: "uploaded",
+                processing_active: false,
+                target_languages: [],
+                latest_recording_at: "2026-07-25T00:00:00Z",
+                recordings: [],
+              },
+              {
+                id: "existing-folder-id",
+                title: "Echo test",
+                recording_count: 2,
+                total_pages: 3,
+                processing_status: "ready",
+                processing_active: false,
+                target_languages: [],
+                latest_recording_at: "2026-07-24T00:00:00Z",
+                recordings: [],
+              },
+            ],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: "Saved" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+
+    render(<BookUpload />);
+    fireEvent.change(screen.getByLabelText("Choose PDF"), {
+      target: { files: [new File(["pdf"], "chapter.pdf", { type: "application/pdf" })] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Prepare your upload" }));
+
+    expect(await screen.findByText("Where should we save this upload?")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Save to existing folder" }));
+    expect(await screen.findByRole("button", { name: "Echo test" })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Echo test" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(fetchMock.mock.calls[2][0]).toContain("/api/books/new-recording-id/folder");
+    expect(fetchMock.mock.calls[2][1]).toMatchObject({ method: "PATCH" });
+    expect(JSON.parse(fetchMock.mock.calls[2][1]?.body as string)).toEqual({
+      folder_id: "existing-folder-id",
+    });
+  });
+
+  it("creates a new folder from the upload destination modal", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          book_id: "new-recording-id",
+          source_type: "pdf",
+          target_language: "cantonese",
+          tts_voice: "zh-HK-HiuMaanNeural",
+          total_pages: 1,
+          original_filename: "chapter.pdf",
+          classification: "text",
+          pages: [],
+          processing_status: "uploaded",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    render(<BookUpload />);
+    fireEvent.change(screen.getByLabelText("Choose PDF"), {
+      target: { files: [new File(["pdf"], "chapter.pdf", { type: "application/pdf" })] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Prepare your upload" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Create a new folder" }));
+    fireEvent.change(screen.getByLabelText("Folder name"), {
+      target: { value: "Echo test" },
+    });
+
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ message: "Renamed" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Create and continue" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(fetchMock.mock.calls[1][0]).toContain("/api/books/folders/new-recording-id");
+    expect(JSON.parse(fetchMock.mock.calls[1][1]?.body as string)).toEqual({
+      title: "Echo test",
+    });
+  });
 });

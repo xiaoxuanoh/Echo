@@ -163,6 +163,10 @@ class BookRenameRequest(BaseModel):
     title: str
 
 
+class BookAssignFolderRequest(BaseModel):
+    folder_id: UUID
+
+
 class BookMutationResult(BaseModel):
     message: str
 

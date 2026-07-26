@@ -1,9 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
-import { getBook, retryPageText, startTextProcessing } from "@/lib/api";
+import {
+  getBook,
+  getBookAudio,
+  prepareBookAudio,
+  retryPageText,
+  startTextProcessing,
+} from "@/lib/api";
 import type {
   BookDetail,
   BookProcessingStatus,
@@ -12,7 +18,7 @@ import type {
 
 
 const bookStatusLabels: Record<BookProcessingStatus, string> = {
-  uploaded: "Ready to read the page text",
+  uploaded: "Ready to create listening audio",
   normalizing_pages: "Preparing the pages",
   inspecting: "Checking the pages",
   extracting_text: "Reading the page text",
@@ -37,6 +43,14 @@ const activeStatuses = new Set<BookProcessingStatus>([
   "inspecting",
   "extracting_text",
   "running_ocr",
+  "generating_audio",
+]);
+
+const textProcessingStatuses = new Set<BookProcessingStatus>([
+  "normalizing_pages",
+  "inspecting",
+  "extracting_text",
+  "running_ocr",
 ]);
 
 export function BookProcessing({ bookId }: { bookId: string }) {
@@ -44,6 +58,9 @@ export function BookProcessing({ bookId }: { bookId: string }) {
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [creatingListeningAudio, setCreatingListeningAudio] = useState(false);
+  const [audioProgress, setAudioProgress] = useState({ completed: 0, total: 0 });
+  const audioStartRequestedRef = useRef(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -78,22 +95,28 @@ export function BookProcessing({ bookId }: { bookId: string }) {
     return () => window.clearInterval(timer);
   }, [book, refresh]);
 
-  async function start() {
-    setActing(true);
-    setError(null);
-    try {
-      await startTextProcessing(bookId);
-      await refresh();
-    } catch (caught) {
-      setError(
-        caught instanceof Error
-          ? caught.message
-          : "Echo could not start preparing the page text.",
-      );
-    } finally {
-      setActing(false);
+  const refreshAudioProgress = useCallback(async () => {
+    const audio = await getBookAudio(bookId);
+    const completed = audio.segments.filter(
+      (segment) => segment.processing_status === "completed" && segment.audio_url,
+    ).length;
+    setAudioProgress({ completed, total: audio.segments.length });
+  }, [bookId]);
+
+  useEffect(() => {
+    if (!book || book.processing_status !== "generating_audio") return;
+
+    const initialTimer = window.setTimeout(() => void refreshAudioProgress(), 0);
+    if (!book.processing_active) {
+      return () => window.clearTimeout(initialTimer);
     }
-  }
+
+    const timer = window.setInterval(() => void refreshAudioProgress(), 1500);
+    return () => {
+      window.clearTimeout(initialTimer);
+      window.clearInterval(timer);
+    };
+  }, [book, refreshAudioProgress]);
 
   async function retry(pageNumber: number) {
     setActing(true);
@@ -106,6 +129,67 @@ export function BookProcessing({ bookId }: { bookId: string }) {
         caught instanceof Error
           ? caught.message
           : `Echo could not retry page ${pageNumber}.`,
+      );
+    } finally {
+      setActing(false);
+    }
+  }
+
+  const startAudio = useCallback(async () => {
+    setActing(true);
+    setError(null);
+    try {
+      await prepareBookAudio(bookId);
+      await refresh();
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Echo could not start creating listening audio.",
+      );
+      setCreatingListeningAudio(false);
+      audioStartRequestedRef.current = false;
+    } finally {
+      setActing(false);
+    }
+  }, [bookId, refresh]);
+
+  useEffect(() => {
+    if (
+      !creatingListeningAudio ||
+      !book ||
+      book.processing_status !== "text_ready" ||
+      audioStartRequestedRef.current
+    ) {
+      return;
+    }
+
+    audioStartRequestedRef.current = true;
+    void startAudio();
+  }, [book, creatingListeningAudio, startAudio]);
+
+  async function startListeningAudio() {
+    setCreatingListeningAudio(true);
+    setActing(true);
+    setError(null);
+    audioStartRequestedRef.current = false;
+
+    try {
+      if (book?.processing_status === "text_ready") {
+        audioStartRequestedRef.current = true;
+        await prepareBookAudio(bookId);
+        await refresh();
+        return;
+      }
+
+      await startTextProcessing(bookId);
+      await refresh();
+    } catch (caught) {
+      setCreatingListeningAudio(false);
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Echo could not start creating listening audio.",
       );
     } finally {
       setActing(false);
@@ -134,38 +218,41 @@ export function BookProcessing({ bookId }: { bookId: string }) {
   }
 
   const isActive = activeStatuses.has(book.processing_status);
-  const canStart =
+  const canStartText =
     book.processing_status === "uploaded" ||
-    (isActive && !book.processing_active);
-  const percent = Math.round((book.completed_pages / book.total_pages) * 100);
+    (textProcessingStatuses.has(book.processing_status) && !book.processing_active);
+  const audioPercent =
+    audioProgress.total > 0
+      ? Math.round((audioProgress.completed / audioProgress.total) * 100)
+      : 0;
+  const progressPercent =
+    book.processing_status === "ready" ? 100 : book.processing_status === "generating_audio" ? audioPercent : 0;
+  const progressLabel =
+    book.processing_status === "generating_audio"
+      ? `${audioProgress.completed} of ${audioProgress.total || "…"} audio parts ready`
+      : `${book.completed_pages} of ${book.total_pages} pages ready`;
 
   return (
     <div className="mt-8">
-      <section className="rounded-3xl border border-border bg-surface p-6 shadow-[0_20px_60px_rgba(48,55,61,0.06)] sm:p-8">
-        <div className="flex flex-wrap items-start justify-between gap-5">
+      <section className="rounded-2xl border border-border bg-surface p-5 shadow-[0_14px_40px_rgba(48,55,61,0.05)] sm:p-6">
+        <div className="mt-2 flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-sm font-bold tracking-[0.14em] text-accent uppercase">
+            <p className="text-sm font-bold tracking-[0.12em] text-accent uppercase">
               {bookStatusLabels[book.processing_status]}
             </p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-[-0.02em] sm:text-4xl">
+            <h1 className="mt-2 text-3xl font-semibold sm:text-4xl">
               {book.title}
             </h1>
-            <p className="mt-2 text-muted">
-              {book.completed_pages} of {book.total_pages} pages ready
-            </p>
+            <p className="mt-1 text-muted">{progressLabel}</p>
           </div>
-          {canStart && (
+          {canStartText && (
             <button
               type="button"
               disabled={acting}
-              onClick={() => void start()}
+              onClick={() => void startListeningAudio()}
               className="min-h-12 rounded-xl bg-accent px-6 py-3 font-semibold text-white shadow-sm hover:bg-accent-dark disabled:opacity-60"
             >
-              {acting
-                ? "Starting…"
-                : book.processing_status === "uploaded"
-                  ? "Read the page text"
-                  : "Continue preparing text"}
+              {acting ? "Starting audio..." : "Create listening audio"}
             </button>
           )}
         </div>
@@ -173,22 +260,23 @@ export function BookProcessing({ bookId }: { bookId: string }) {
         <div className="mt-7 h-3 overflow-hidden rounded-full bg-[#e7e5dd]">
           <div
             className="h-full rounded-full bg-accent transition-[width]"
-            style={{ width: `${percent}%` }}
+            style={{ width: `${progressPercent}%` }}
             role="progressbar"
-            aria-label="Pages with text ready"
+            aria-label="Audio preparation progress"
             aria-valuemin={0}
             aria-valuemax={100}
-            aria-valuenow={percent}
+            aria-valuenow={progressPercent}
           />
         </div>
 
         {isActive && book.processing_active && (
           <p className="mt-4 text-sm text-muted" aria-live="polite">
-            Echo is working through your pages in order. You can keep this page open
-            to watch the progress.
+            {book.processing_status === "generating_audio"
+              ? "Echo is creating listening audio. You can keep this page open to watch the progress."
+              : "Echo is working through your pages in order. You can keep this page open to watch the progress."}
           </p>
         )}
-        {isActive && !book.processing_active && (
+        {textProcessingStatuses.has(book.processing_status) && !book.processing_active && (
           <p className="mt-2 text-sm text-muted">
             Preparation appears to have stopped. Continue to resume from the first
             unfinished page.
@@ -197,12 +285,27 @@ export function BookProcessing({ bookId }: { bookId: string }) {
         {book.processing_status === "text_ready" && (
           <div className="mt-4 rounded-xl border border-[#a9c5b3] bg-[#f4faf5] p-4 text-[#376247]">
             <p>All page text is prepared. You can now create listening audio.</p>
-            <Link
-              href={`/books/${book.id}/listen`}
-              className="mt-3 inline-flex min-h-11 items-center rounded-lg bg-accent px-4 font-semibold text-white hover:bg-accent-dark"
+            <button
+              type="button"
+              disabled={acting}
+              onClick={() => void startListeningAudio()}
+              className="mt-3 min-h-11 rounded-lg bg-accent px-4 font-semibold text-white hover:bg-accent-dark disabled:opacity-60"
             >
-              Open listening page
-            </Link>
+              {acting ? "Starting audio..." : "Create listening audio"}
+            </button>
+          </div>
+        )}
+        {book.processing_status === "generating_audio" && !book.processing_active && (
+          <div className="mt-4 rounded-xl border border-[#d9b9b4] bg-[#fff3f1] p-4 text-[#783a33]">
+            <p>Audio preparation stopped before it finished.</p>
+            <button
+              type="button"
+              disabled={acting}
+              onClick={() => void startListeningAudio()}
+              className="mt-3 min-h-11 rounded-lg border border-[#d9b9b4] px-4 font-semibold hover:bg-white disabled:opacity-60"
+            >
+              {acting ? "Starting audio..." : "Resume audio preparation"}
+            </button>
           </div>
         )}
         {book.processing_status === "ready" && (
@@ -212,7 +315,7 @@ export function BookProcessing({ bookId }: { bookId: string }) {
               href={`/books/${book.id}/listen`}
               className="mt-3 inline-flex min-h-11 items-center rounded-lg bg-accent px-4 font-semibold text-white hover:bg-accent-dark"
             >
-              Listen to your document
+              Listen now
             </Link>
           </div>
         )}
@@ -232,7 +335,7 @@ export function BookProcessing({ bookId }: { bookId: string }) {
       </section>
 
       <section className="mt-7 rounded-3xl border border-border bg-surface p-6 sm:p-8">
-        <h2 className="text-2xl font-semibold">Book pages</h2>
+        <h2 className="text-2xl font-semibold">Upload pages</h2>
         <ol className="mt-5 space-y-3">
           {book.pages.map((page) => (
             <li key={page.id} className="rounded-2xl border border-border bg-white p-5">

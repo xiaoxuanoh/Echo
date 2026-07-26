@@ -55,6 +55,20 @@ export async function renameBookFolder(
   );
 }
 
+export async function assignBookToFolder(
+  bookId: string,
+  folderId: string,
+): Promise<void> {
+  await parseResponse<{ message: string }>(
+    await fetch(`${API_BASE_URL}/api/books/${bookId}/folder`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ folder_id: folderId }),
+    }),
+    "Echo could not save this recording to the folder.",
+  );
+}
+
 export async function deleteBookFolder(folderId: string): Promise<void> {
   await parseResponse<{ message: string }>(
     await fetch(`${API_BASE_URL}/api/books/folders/${folderId}`, {

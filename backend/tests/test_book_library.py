@@ -125,6 +125,37 @@ def test_uploads_pdf_recording_to_existing_library_book(
     assert folder["recording_count"] == 2
 
 
+def test_assigns_a_new_recording_to_an_existing_folder(
+    client: TestClient,
+    storage_path: Path,
+) -> None:
+    folder = client.post(
+        "/api/books/pdf",
+        files={"file": ("book.pdf", make_pdf(["First text."]), "application/pdf")},
+    ).json()
+    recording = client.post(
+        "/api/books/pdf",
+        files={
+            "file": ("chapter-two.pdf", make_pdf(["Second text."]), "application/pdf")
+        },
+    ).json()
+
+    response = client.patch(
+        f"/api/books/{recording['book_id']}/folder",
+        json={"folder_id": folder["book_id"]},
+    )
+
+    assert response.status_code == 200
+    saved = LocalBookMetadataService().load(storage_path / recording["book_id"])
+    assert str(saved.library_book_id) == folder["book_id"]
+    assert saved.title == "book"
+    assert saved.recording_title == "chapter-two"
+    library = client.get("/api/books").json()["folders"]
+    assert len(library) == 1
+    assert library[0]["id"] == folder["book_id"]
+    assert library[0]["recording_count"] == 2
+
+
 def test_uploads_store_selected_listening_language(
     client: TestClient,
     storage_path: Path,

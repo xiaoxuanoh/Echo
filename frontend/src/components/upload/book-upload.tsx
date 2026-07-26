@@ -21,7 +21,13 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
-import { uploadImages, uploadPdf } from "@/lib/api";
+import {
+  assignBookToFolder,
+  getBookLibrary,
+  renameBookFolder,
+  uploadImages,
+  uploadPdf,
+} from "@/lib/api";
 import {
   defaultListeningLanguage,
   isListeningLanguage,
@@ -30,7 +36,7 @@ import {
   type ListeningLanguage,
 } from "@/lib/listening-languages";
 import { validateNewImages, validatePdf } from "@/lib/upload-validation";
-import type { Rotation, UploadResult } from "@/types/books";
+import type { BookLibraryFolder, Rotation, UploadResult } from "@/types/books";
 
 type Mode = "pdf" | "images";
 type PendingImage = {
@@ -57,6 +63,16 @@ function renamedPdfFile(file: File, name: string): File {
     type: file.type || "application/pdf",
     lastModified: file.lastModified,
   });
+}
+
+type FolderModalStep = "choice" | "existing" | "new";
+
+function suggestedFolderName(result: UploadResult): string {
+  const filename =
+    result.source_type === "pdf"
+      ? result.original_filename
+      : result.ordered_image_filenames[0] || "New upload";
+  return filename.replace(/\.[^/.]+$/, "") || "New upload";
 }
 
 function nextRotation(current: Rotation, direction: "left" | "right"): Rotation {
@@ -154,6 +170,155 @@ function SortablePage({
         </button>
       </div>
     </li>
+  );
+}
+
+function UploadDestinationModal({
+  step,
+  folders,
+  currentBookId,
+  loading,
+  acting,
+  error,
+  newFolderName,
+  onChooseExisting,
+  onChooseNew,
+  onBack,
+  onSelectFolder,
+  onNewFolderNameChange,
+  onCreateFolder,
+}: {
+  step: FolderModalStep;
+  folders: BookLibraryFolder[];
+  currentBookId: string;
+  loading: boolean;
+  acting: boolean;
+  error: string | null;
+  newFolderName: string;
+  onChooseExisting: () => void;
+  onChooseNew: () => void;
+  onBack: () => void;
+  onSelectFolder: (folderId: string) => void;
+  onNewFolderNameChange: (value: string) => void;
+  onCreateFolder: () => void;
+}) {
+  const availableFolders = folders.filter((folder) => folder.id !== currentBookId);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-5">
+      <div className="absolute inset-0 bg-[#17202a99]" aria-hidden="true" />
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="upload-destination-title"
+        className="relative w-full max-w-lg rounded-2xl border border-border bg-surface p-6 shadow-[0_24px_70px_rgba(23,32,42,0.2)]"
+      >
+        {step === "choice" && (
+          <>
+            <p className="text-sm font-bold tracking-[0.12em] text-accent uppercase">
+              Upload saved
+            </p>
+            <h2 id="upload-destination-title" className="mt-2 text-2xl font-semibold">
+              Where should we save this upload?
+            </h2>
+            <p className="mt-2 text-muted">
+              Choose a folder before you continue to the page text and listening steps.
+            </p>
+            <div className="mt-6 grid gap-3">
+              <button
+                type="button"
+                onClick={onChooseExisting}
+                className="min-h-14 rounded-xl border border-border bg-white px-4 text-left font-semibold hover:border-accent hover:bg-[#edf4f7]"
+              >
+                Save to existing folder
+              </button>
+              <button
+                type="button"
+                onClick={onChooseNew}
+                className="min-h-14 rounded-xl border border-border bg-white px-4 text-left font-semibold hover:border-accent hover:bg-[#edf4f7]"
+              >
+                Create a new folder
+              </button>
+            </div>
+          </>
+        )}
+
+        {step === "existing" && (
+          <>
+            <button
+              type="button"
+              onClick={onBack}
+              className="font-semibold text-accent underline-offset-4 hover:underline"
+            >
+              ← Back
+            </button>
+            <h2 id="upload-destination-title" className="mt-4 text-2xl font-semibold">
+              Choose a folder
+            </h2>
+            {loading ? (
+              <p className="mt-4 text-muted">Loading your folders...</p>
+            ) : availableFolders.length > 0 ? (
+              <div className="mt-5 grid max-h-72 gap-2 overflow-y-auto">
+                {availableFolders.map((folder) => (
+                  <button
+                    key={folder.id}
+                    type="button"
+                    disabled={acting}
+                    onClick={() => onSelectFolder(folder.id)}
+                    className="min-h-12 rounded-xl border border-border bg-white px-4 text-left font-semibold hover:border-accent hover:bg-[#edf4f7] disabled:opacity-60"
+                  >
+                    {folder.title}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-4 text-muted">There are no other folders yet.</p>
+            )}
+          </>
+        )}
+
+        {step === "new" && (
+          <>
+            <h2 id="upload-destination-title" className="text-2xl font-semibold">
+              Create a new folder
+            </h2>
+            <label className="mt-5 block">
+              <span className="text-sm font-semibold text-muted">Folder name</span>
+              <input
+                autoFocus
+                value={newFolderName}
+                onChange={(event) => onNewFolderNameChange(event.target.value)}
+                className="mt-2 min-h-12 w-full rounded-lg border border-border bg-white px-3"
+              />
+            </label>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                disabled={acting}
+                onClick={onBack}
+                className="min-h-11 rounded-lg border border-border px-4 font-semibold hover:bg-[#f8f6f0] disabled:opacity-60"
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                disabled={acting || !newFolderName.trim()}
+                onClick={onCreateFolder}
+                className="min-h-11 rounded-lg bg-accent px-4 font-semibold text-white hover:bg-accent-dark disabled:opacity-60"
+              >
+                {acting ? "Creating..." : "Create and continue"}
+              </button>
+            </div>
+          </>
+        )}
+
+        {error && (
+          <p role="alert" className="mt-4 rounded-lg bg-[#fff3f1] p-3 text-sm text-[#783a33]">
+            {error}
+          </p>
+        )}
+      </section>
+    </div>
   );
 }
 
@@ -278,6 +443,12 @@ export function BookUpload({
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<UploadResult | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [folderModalStep, setFolderModalStep] = useState<FolderModalStep | null>(null);
+  const [folderModalFolders, setFolderModalFolders] = useState<BookLibraryFolder[]>([]);
+  const [folderModalLoading, setFolderModalLoading] = useState(false);
+  const [folderModalActing, setFolderModalActing] = useState(false);
+  const [folderModalError, setFolderModalError] = useState<string | null>(null);
+  const [newFolderName, setNewFolderName] = useState("");
   const previewUrls = useRef(new Set<string>());
   const imageInput = useRef<HTMLInputElement>(null);
   const resultCardRef = useRef<HTMLElement>(null);
@@ -307,6 +478,61 @@ export function BookUpload({
       block: "start",
     });
   }, [result]);
+
+  function openExistingFolders() {
+    setFolderModalStep("existing");
+    setFolderModalLoading(true);
+    setFolderModalError(null);
+    void getBookLibrary()
+      .then((library) => setFolderModalFolders(library.folders))
+      .catch((caught) => {
+        setFolderModalError(
+          caught instanceof Error ? caught.message : "Echo could not load your folders.",
+        );
+      })
+      .finally(() => setFolderModalLoading(false));
+  }
+
+  function openNewFolder() {
+    if (!result) return;
+    setNewFolderName(suggestedFolderName(result));
+    setFolderModalError(null);
+    setFolderModalStep("new");
+  }
+
+  async function selectExistingFolder(folderId: string) {
+    if (!result) return;
+    setFolderModalActing(true);
+    setFolderModalError(null);
+    try {
+      await assignBookToFolder(result.book_id, folderId);
+      setFolderModalStep(null);
+    } catch (caught) {
+      setFolderModalError(
+        caught instanceof Error
+          ? caught.message
+          : "Echo could not save this recording to the folder.",
+      );
+    } finally {
+      setFolderModalActing(false);
+    }
+  }
+
+  async function createNewFolder() {
+    if (!result || !newFolderName.trim()) return;
+    setFolderModalActing(true);
+    setFolderModalError(null);
+    try {
+      await renameBookFolder(result.book_id, newFolderName.trim());
+      setFolderModalStep(null);
+    } catch (caught) {
+      setFolderModalError(
+        caught instanceof Error ? caught.message : "Echo could not create this folder.",
+      );
+    } finally {
+      setFolderModalActing(false);
+    }
+  }
 
   function chooseMode(nextMode: Mode) {
     setMode(nextMode);
@@ -425,6 +651,11 @@ export function BookUpload({
             })
           : await uploadImages(images, { libraryBookId, targetLanguage });
       setResult(uploadResult);
+      if (!libraryBookId) {
+        setNewFolderName(suggestedFolderName(uploadResult));
+        setFolderModalError(null);
+        setFolderModalStep("choice");
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "The upload did not complete.");
     } finally {
@@ -669,6 +900,30 @@ export function BookUpload({
           result={result}
           libraryBookTitle={libraryBookTitle}
           cardRef={resultCardRef}
+        />
+      )}
+
+      {result && folderModalStep && (
+        <UploadDestinationModal
+          step={folderModalStep}
+          folders={folderModalFolders}
+          currentBookId={result.book_id}
+          loading={folderModalLoading}
+          acting={folderModalActing}
+          error={folderModalError}
+          newFolderName={newFolderName}
+          onChooseExisting={openExistingFolders}
+          onChooseNew={openNewFolder}
+          onBack={() => {
+            setFolderModalError(null);
+            setFolderModalStep("choice");
+          }}
+          onSelectFolder={(folderId) => void selectExistingFolder(folderId)}
+          onNewFolderNameChange={(value) => {
+            setNewFolderName(value);
+            setFolderModalError(null);
+          }}
+          onCreateFolder={() => void createNewFolder()}
         />
       )}
     </div>

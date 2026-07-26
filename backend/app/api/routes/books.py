@@ -25,6 +25,7 @@ from app.schemas.books import (
     AudioProcessingAccepted,
     AudioSegmentResult,
     BookAudioResult,
+    BookAssignFolderRequest,
     BookDetailResult,
     BookLibraryFolderResult,
     BookLibraryItemResult,
@@ -690,6 +691,29 @@ def list_books(request: Request) -> BookLibraryResult:
     registry: LocalBookJobRegistry = request.app.state.book_job_registry
     books = LocalBookMetadataService().list_books(settings.local_storage_path)
     return BookLibraryResult(folders=_library_folders(books, registry))
+
+
+@router.patch("/{book_id}/folder", response_model=BookMutationResult)
+def assign_recording_to_folder(
+    request: Request,
+    book_id: UUID,
+    payload: BookAssignFolderRequest,
+) -> BookMutationResult:
+    settings = request.app.state.settings
+    metadata = LocalBookMetadataService()
+    book_directory = settings.local_storage_path / str(book_id)
+    recording = metadata.load(book_directory)
+    target_folder = _target_library_folder(settings.local_storage_path, payload.folder_id)
+
+    recording.library_book_id = target_folder.id
+    recording.title = target_folder.title
+    if recording.recording_title is None:
+        recording.recording_title = (
+            Path(recording.original_filename or "Recording").stem or "Recording"
+        )
+    recording.updated_at = datetime.now(UTC)
+    metadata.save(book_directory, recording)
+    return BookMutationResult(message="Echo saved this recording to the folder.")
 
 
 @router.patch("/folders/{folder_id}", response_model=BookMutationResult)

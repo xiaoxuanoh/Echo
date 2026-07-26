@@ -14,10 +14,10 @@ export default async function BookPage({
     <main className="flex-1 px-5 py-8 sm:px-8 sm:py-12">
       <div className="mx-auto max-w-5xl">
         <Link
-          href="/books"
+          href="/books/new"
           className="inline-flex min-h-11 items-center font-semibold text-accent underline-offset-4 hover:underline"
         >
-          ← Back to library
+          ← Back to upload
         </Link>
         <BookProcessing bookId={id} />
       </div>
