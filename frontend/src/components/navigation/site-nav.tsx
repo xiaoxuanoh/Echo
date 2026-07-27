@@ -2,6 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+
+import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 
 const navItems = [
   { href: "/", label: "Home", matches: (pathname: string) => pathname === "/" },
@@ -19,6 +22,33 @@ const navItems = [
 
 export function SiteNav() {
   const pathname = usePathname();
+  const supabase = useMemo(() => getSupabaseBrowserClient(), []);
+  const [isSignedIn, setIsSignedIn] = useState(false);
+
+  useEffect(() => {
+    if (!supabase) {
+      return;
+    }
+
+    let isMounted = true;
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (isMounted) {
+        setIsSignedIn(Boolean(data.session));
+      }
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsSignedIn(Boolean(session));
+    });
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, [supabase]);
 
   return (
     <header className="sticky top-0 z-20 border-b border-border bg-surface/95 backdrop-blur">
@@ -32,7 +62,7 @@ export function SiteNav() {
         >
           Echo
         </Link>
-        <div className="flex items-center gap-5 sm:gap-7">
+        <div className="flex items-center gap-4 sm:gap-6">
           {navItems.map((item) => {
             const isActive = item.matches(pathname);
 
@@ -52,6 +82,24 @@ export function SiteNav() {
               </Link>
             );
           })}
+          <span
+            aria-label={isSignedIn ? "Signed in" : "Signed out"}
+            className={[
+              "inline-flex min-h-9 items-center gap-2 rounded-full border px-3 text-xs font-semibold",
+              isSignedIn
+                ? "border-[#b9d2c1] bg-[#ecf6ef] text-[#28543a]"
+                : "border-[#e3b6b6] bg-[#fff1f1] text-[#8a3434]",
+            ].join(" ")}
+          >
+            <span
+              aria-hidden="true"
+              className={[
+                "h-2 w-2 rounded-full",
+                isSignedIn ? "bg-[#2f8f4e]" : "bg-[#c94a4a]",
+              ].join(" ")}
+            />
+            {isSignedIn ? "Signed in" : "Signed out"}
+          </span>
         </div>
       </nav>
     </header>
