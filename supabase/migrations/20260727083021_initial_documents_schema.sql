@@ -141,8 +141,14 @@ create index documents_user_updated_at_idx
 create index documents_user_library_document_id_idx
   on public.documents (user_id, library_document_id);
 
+create index documents_library_document_user_idx
+  on public.documents (library_document_id, user_id);
+
 create index document_pages_user_document_page_number_idx
   on public.document_pages (user_id, document_id, page_number);
+
+create index document_pages_document_user_idx
+  on public.document_pages (document_id, user_id);
 
 create index audio_segments_user_document_segment_number_idx
   on public.audio_segments (user_id, document_id, segment_number);
@@ -150,8 +156,17 @@ create index audio_segments_user_document_segment_number_idx
 create index audio_segments_user_page_id_idx
   on public.audio_segments (user_id, page_id);
 
+create index audio_segments_document_user_idx
+  on public.audio_segments (document_id, user_id);
+
+create index audio_segments_page_document_user_idx
+  on public.audio_segments (page_id, document_id, user_id);
+
 create index listening_progress_user_updated_at_idx
   on public.listening_progress (user_id, updated_at desc);
+
+create index listening_progress_document_user_idx
+  on public.listening_progress (document_id, user_id);
 
 create or replace function public.set_updated_at()
 returns trigger

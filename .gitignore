@@ -26,6 +26,10 @@ backend/data/*
 uploads/
 generated/
 
+# Supabase local CLI state
+supabase/.branches/
+supabase/.temp/
+
 # Editors and operating systems
 .DS_Store
 .idea/

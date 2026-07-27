@@ -1,3 +1,5 @@
+import { AuthPanel } from "@/components/auth/auth-panel";
+
 export default function ProfilePage() {
   return (
     <main className="flex-1 px-5 py-8 sm:px-8 sm:py-12">
@@ -8,8 +10,8 @@ export default function ProfilePage() {
           </p>
           <h1 className="mt-2 text-4xl font-semibold">Profile</h1>
           <p className="mt-3 max-w-2xl leading-7 text-muted">
-            Echo is running as a local MVP. Your uploads and listening progress
-            stay on this device for now.
+            Connect Echo to Supabase Auth so later document saves and listening
+            progress can belong to your account.
           </p>
         </header>
 
@@ -18,14 +20,16 @@ export default function ProfilePage() {
           <dl className="mt-5 grid gap-4 sm:grid-cols-2">
             <div>
               <dt className="text-sm font-semibold text-muted">Account mode</dt>
-              <dd className="mt-1 text-lg font-semibold">Local user</dd>
+              <dd className="mt-1 text-lg font-semibold">Supabase Auth</dd>
             </div>
             <div>
               <dt className="text-sm font-semibold text-muted">Library storage</dt>
-              <dd className="mt-1 text-lg font-semibold">This device</dd>
+              <dd className="mt-1 text-lg font-semibold">Local until Step 3</dd>
             </div>
           </dl>
         </section>
+
+        <AuthPanel />
       </div>
     </main>
   );
