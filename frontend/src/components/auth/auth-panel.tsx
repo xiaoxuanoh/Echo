@@ -1,9 +1,9 @@
 "use client";
 
 import type { Session } from "@supabase/supabase-js";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useState } from "react";
 
-import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
+import { useAuthSession } from "@/components/auth/use-auth-session";
 
 type CreateAccountStep = "email" | "password" | "name";
 
@@ -16,9 +16,7 @@ function getDisplayName(session: Session) {
 }
 
 export function AuthPanel() {
-  const supabase = useMemo(() => getSupabaseBrowserClient(), []);
-  const [session, setSession] = useState<Session | null>(null);
-  const [isLoadingSession, setIsLoadingSession] = useState(Boolean(supabase));
+  const { isLoadingSession, session, setSession, supabase } = useAuthSession();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -33,32 +31,6 @@ export function AuthPanel() {
   const [createError, setCreateError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!supabase) {
-      return;
-    }
-
-    let isMounted = true;
-
-    supabase.auth.getSession().then(({ data }) => {
-      if (isMounted) {
-        setSession(data.session);
-        setIsLoadingSession(false);
-      }
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession);
-    });
-
-    return () => {
-      isMounted = false;
-      subscription.unsubscribe();
-    };
-  }, [supabase]);
 
   function openCreateAccount() {
     setCreateAccountStep("email");
@@ -314,7 +286,7 @@ export function AuthPanel() {
                 />
               </label>
 
-              <div className="flex flex-wrap gap-3">
+              <div className="flex flex-wrap justify-center gap-3">
                 <button
                   className="inline-flex min-h-12 items-center justify-center rounded-xl bg-accent px-5 font-semibold text-white hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-60"
                   disabled={isSubmitting}

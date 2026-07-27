@@ -2,9 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
 
-import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
+import { useAuthSession } from "@/components/auth/use-auth-session";
 
 const navItems = [
   { href: "/", label: "Home", matches: (pathname: string) => pathname === "/" },
@@ -22,33 +21,7 @@ const navItems = [
 
 export function SiteNav() {
   const pathname = usePathname();
-  const supabase = useMemo(() => getSupabaseBrowserClient(), []);
-  const [isSignedIn, setIsSignedIn] = useState(false);
-
-  useEffect(() => {
-    if (!supabase) {
-      return;
-    }
-
-    let isMounted = true;
-
-    supabase.auth.getSession().then(({ data }) => {
-      if (isMounted) {
-        setIsSignedIn(Boolean(data.session));
-      }
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setIsSignedIn(Boolean(session));
-    });
-
-    return () => {
-      isMounted = false;
-      subscription.unsubscribe();
-    };
-  }, [supabase]);
+  const { isSignedIn } = useAuthSession();
 
   return (
     <header className="sticky top-0 z-20 border-b border-border bg-surface/95 backdrop-blur">

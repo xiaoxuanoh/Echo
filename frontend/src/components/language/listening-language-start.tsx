@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
+import { useAuthSession } from "@/components/auth/use-auth-session";
 import {
   defaultListeningLanguage,
   listeningLanguages,
@@ -10,10 +11,15 @@ import {
 } from "@/lib/listening-languages";
 
 export function ListeningLanguageStart() {
+  const { isLoadingSession, isSignedIn } = useAuthSession();
   const [language, setLanguage] = useState<ListeningLanguage>(
     defaultListeningLanguage,
   );
   const uploadHref = useMemo(() => `/books/new?language=${language}`, [language]);
+  const libraryHref = isSignedIn ? "/books" : "/profile";
+  const libraryLabel = isSignedIn ? "Go to library" : "Sign in to view your library";
+  const uploadActionHref = isSignedIn ? uploadHref : "/profile";
+  const uploadLabel = isSignedIn ? "Start uploading" : "Sign in to upload";
 
   return (
     <div className="mt-9">
@@ -42,16 +48,16 @@ export function ListeningLanguageStart() {
 
       <div className="mt-7 flex flex-wrap gap-3">
         <Link
-          href="/books"
+          href={libraryHref}
           className="inline-flex min-h-14 items-center justify-center rounded-xl bg-accent px-7 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-accent-dark"
         >
-          Go to library
+          {isLoadingSession ? "Checking account..." : libraryLabel}
         </Link>
         <Link
-          href={uploadHref}
+          href={uploadActionHref}
           className="inline-flex min-h-14 items-center justify-center rounded-xl border border-border bg-surface px-7 py-3 text-base font-semibold text-foreground transition hover:bg-[#f8f6f0]"
         >
-          Start uploading
+          {isLoadingSession ? "Checking upload access..." : uploadLabel}
         </Link>
       </div>
     </div>

@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { DocumentUpload } from "@/components/upload/document-upload";
+import { UploadAuthGate } from "@/components/auth/upload-auth-gate";
 
 export default async function NewDocumentPage({
   searchParams,
@@ -32,13 +32,11 @@ export default async function NewDocumentPage({
               : "Choose a PDF or add photographs of each page. You can check their order before Echo prepares them."}
           </p>
         </header>
-        <section className="mt-5 rounded-2xl border border-border bg-surface p-5 shadow-[0_14px_40px_rgba(48,55,61,0.05)] sm:p-6">
-          <DocumentUpload
-            initialLanguage={language}
-            libraryDocumentId={folderId}
-            libraryDocumentTitle={folderTitle}
-          />
-        </section>
+        <UploadAuthGate
+          initialLanguage={language}
+          libraryDocumentId={folderId}
+          libraryDocumentTitle={folderTitle}
+        />
       </div>
     </main>
   );
