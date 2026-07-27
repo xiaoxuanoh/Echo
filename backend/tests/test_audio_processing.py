@@ -8,8 +8,8 @@ from fastapi.testclient import TestClient
 
 from app.core.config import Settings
 from app.main import create_app
-from app.models.books import BookPageRecord
-from app.services.book_metadata import LocalBookMetadataService
+from app.models.documents import DocumentPageRecord
+from app.services.document_metadata import LocalDocumentMetadataService
 from app.services.tts import (
     AzureSpeechTtsProvider,
     EdgeTtsProvider,
@@ -22,11 +22,11 @@ from tests.conftest import make_pdf
 
 def test_segments_text_without_exceeding_limit() -> None:
     now = datetime.now(UTC)
-    book_id = uuid4()
+    document_id = uuid4()
     page_id = uuid4()
-    page = BookPageRecord(
+    page = DocumentPageRecord(
         id=page_id,
-        book_id=book_id,
+        document_id=document_id,
         page_number=1,
         extraction_method="embedded_text",
         extracted_text="First sentence. Second sentence. Third sentence.",
@@ -47,11 +47,11 @@ def test_segments_text_without_exceeding_limit() -> None:
 
 def test_segments_merge_visual_pdf_line_breaks_before_audio() -> None:
     now = datetime.now(UTC)
-    book_id = uuid4()
+    document_id = uuid4()
     page_id = uuid4()
-    page = BookPageRecord(
+    page = DocumentPageRecord(
         id=page_id,
-        book_id=book_id,
+        document_id=document_id,
         page_number=1,
         extraction_method="embedded_text",
         extracted_text=(
@@ -84,7 +84,7 @@ def test_segments_merge_visual_pdf_line_breaks_before_audio() -> None:
 
 def test_segments_attach_short_heading_to_next_audio_part() -> None:
     now = datetime.now(UTC)
-    book_id = uuid4()
+    document_id = uuid4()
     page_id = uuid4()
     title = "「進可攻、退可守」的期權實戰配置"
     body = (
@@ -94,9 +94,9 @@ def test_segments_attach_short_heading_to_next_audio_part() -> None:
         + "股票期權能讓投資者在波動市場中更靈活地管理風險和收入。"
         * 35
     )
-    page = BookPageRecord(
+    page = DocumentPageRecord(
         id=page_id,
-        book_id=book_id,
+        document_id=document_id,
         page_number=1,
         extraction_method="embedded_text",
         extracted_text=f"{title}\n{body}",
@@ -116,7 +116,7 @@ def test_segments_attach_short_heading_to_next_audio_part() -> None:
 
 def test_segments_do_not_create_tiny_tail_for_slightly_long_cjk_page() -> None:
     now = datetime.now(UTC)
-    book_id = uuid4()
+    document_id = uuid4()
     page_id = uuid4()
     title = "「進可攻、退可守」的期權實戰配置"
     body = (
@@ -127,9 +127,9 @@ def test_segments_do_not_create_tiny_tail_for_slightly_long_cjk_page() -> None:
         * 32
         + "市場參與者類型繁多，有些是純粹的投機者，有些是長期投資者，也"
     )
-    page = BookPageRecord(
+    page = DocumentPageRecord(
         id=page_id,
-        book_id=book_id,
+        document_id=document_id,
         page_number=1,
         extraction_method="embedded_text",
         extracted_text=f"{title}\n{body}",
@@ -149,11 +149,11 @@ def test_segments_do_not_create_tiny_tail_for_slightly_long_cjk_page() -> None:
 
 def test_segments_normalize_cjk_radicals_before_audio() -> None:
     now = datetime.now(UTC)
-    book_id = uuid4()
+    document_id = uuid4()
     page_id = uuid4()
-    page = BookPageRecord(
+    page = DocumentPageRecord(
         id=page_id,
-        book_id=book_id,
+        document_id=document_id,
         page_number=1,
         extraction_method="embedded_text",
         extracted_text="⽅⾯擁有 ⻑期經驗",
@@ -198,7 +198,7 @@ def test_prepares_mock_audio_for_text_ready_book(
     assert audio.json()["segments"][0]["processing_status"] == "completed"
     assert audio.json()["segments"][0]["audio_url"].endswith("/audio/1/file")
 
-    saved = LocalBookMetadataService().load(storage_path / upload["book_id"])
+    saved = LocalDocumentMetadataService().load(storage_path / upload["book_id"])
     assert saved.status == "ready"
     assert saved.audio_segments[0].audio_storage_path == "audio/segment-0001.wav"
     assert (storage_path / upload["book_id"] / "audio" / "segment-0001.wav").exists()

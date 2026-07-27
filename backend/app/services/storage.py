@@ -14,8 +14,8 @@ class LocalStorageService:
     def __init__(self, root: Path) -> None:
         self.root = root
 
-    def create_book_directory(self, book_id: UUID) -> Path:
-        directory = self.root / str(book_id)
+    def create_document_directory(self, document_id: UUID) -> Path:
+        directory = self.root / str(document_id)
         directory.mkdir(parents=True, exist_ok=False)
         return directory
 

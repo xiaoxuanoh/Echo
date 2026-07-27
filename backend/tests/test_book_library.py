@@ -3,7 +3,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from app.services.book_metadata import LocalBookMetadataService
+from app.services.document_metadata import LocalDocumentMetadataService
 from tests.conftest import make_pdf
 
 
@@ -27,7 +27,7 @@ def test_lists_local_books_by_latest_update(
         files={"file": ("newer.pdf", make_pdf(["Newer text."]), "application/pdf")},
     ).json()
 
-    metadata = LocalBookMetadataService()
+    metadata = LocalDocumentMetadataService()
     older = metadata.load(storage_path / older_upload["book_id"])
     newer = metadata.load(storage_path / newer_upload["book_id"])
     older.updated_at = datetime(2026, 7, 22, tzinfo=UTC)
@@ -115,8 +115,8 @@ def test_uploads_pdf_recording_to_existing_library_book(
     )
 
     assert second.status_code == 200
-    saved = LocalBookMetadataService().load(storage_path / second.json()["book_id"])
-    assert str(saved.library_book_id) == first["book_id"]
+    saved = LocalDocumentMetadataService().load(storage_path / second.json()["book_id"])
+    assert str(saved.library_document_id) == first["book_id"]
     assert saved.title == "book"
     assert saved.recording_title == "chapter-two"
     folder = client.get("/api/books").json()["folders"][0]
@@ -146,8 +146,8 @@ def test_assigns_a_new_recording_to_an_existing_folder(
     )
 
     assert response.status_code == 200
-    saved = LocalBookMetadataService().load(storage_path / recording["book_id"])
-    assert str(saved.library_book_id) == folder["book_id"]
+    saved = LocalDocumentMetadataService().load(storage_path / recording["book_id"])
+    assert str(saved.library_document_id) == folder["book_id"]
     assert saved.title == "book"
     assert saved.recording_title == "chapter-two"
     library = client.get("/api/books").json()["folders"]
@@ -170,7 +170,7 @@ def test_uploads_store_selected_listening_language(
     result = response.json()
     assert result["target_language"] == "cantonese"
     assert result["tts_voice"] == "zh-HK-HiuMaanNeural"
-    saved = LocalBookMetadataService().load(storage_path / result["book_id"])
+    saved = LocalDocumentMetadataService().load(storage_path / result["book_id"])
     assert saved.target_language == "cantonese"
     assert saved.tts_voice == "zh-HK-HiuMaanNeural"
     folder = client.get("/api/books").json()["folders"][0]
@@ -214,9 +214,9 @@ def test_renames_a_local_book_folder(
     )
 
     assert response.status_code == 200
-    saved = LocalBookMetadataService().load(storage_path / upload["book_id"])
+    saved = LocalDocumentMetadataService().load(storage_path / upload["book_id"])
     assert saved.title == "Renamed book"
-    assert str(saved.library_book_id) == upload["book_id"]
+    assert str(saved.library_document_id) == upload["book_id"]
     assert client.get("/api/books").json()["folders"][0]["title"] == "Renamed book"
 
 
@@ -258,7 +258,7 @@ def test_renames_one_recording(
     )
 
     assert response.status_code == 200
-    saved = LocalBookMetadataService().load(storage_path / upload["book_id"])
+    saved = LocalDocumentMetadataService().load(storage_path / upload["book_id"])
     assert saved.title == "chapter"
     assert saved.recording_title == "Chapter one"
     recording = client.get("/api/books").json()["folders"][0]["recordings"][0]

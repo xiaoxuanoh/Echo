@@ -3,8 +3,8 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.core.errors import EchoError
-from app.services.book_processing import BookTextProcessingService
-from app.services.book_metadata import LocalBookMetadataService
+from app.services.document_processing import DocumentTextProcessingService
+from app.services.document_metadata import LocalDocumentMetadataService
 from app.services.ocr import MockOcrProvider, OcrResult
 from tests.conftest import make_pdf
 from tests.test_uploads import image_bytes
@@ -39,7 +39,7 @@ def test_processes_all_image_pages_in_order(
         page["extracted_text"] == "這是本地測試文字。" for page in result["pages"]
     )
 
-    saved = LocalBookMetadataService().load(storage_path / upload["book_id"])
+    saved = LocalDocumentMetadataService().load(storage_path / upload["book_id"])
     assert saved.status == "text_ready"
     assert all(page.processing_status == "completed" for page in saved.pages)
 
@@ -79,14 +79,14 @@ def test_retries_only_a_failed_page(
         files=[("files", ("page.png", image_bytes((20, 30)), "image/png"))],
         data={"rotations": "[0]"},
     ).json()
-    book_directory = storage_path / upload["book_id"]
-    metadata = LocalBookMetadataService()
-    book = metadata.load(book_directory)
-    book.status = "failed"
-    book.error_message = "1 page still needs attention."
-    book.pages[0].processing_status = "failed"
-    book.pages[0].error_message = "Echo could not read the text on this page."
-    metadata.save(book_directory, book)
+    document_directory = storage_path / upload["book_id"]
+    metadata = LocalDocumentMetadataService()
+    document = metadata.load(document_directory)
+    document.status = "failed"
+    document.error_message = "1 page still needs attention."
+    document.pages[0].processing_status = "failed"
+    document.pages[0].error_message = "Echo could not read the text on this page."
+    metadata.save(document_directory, document)
 
     accepted = client.post(f"/api/books/{upload['book_id']}/pages/1/retry-text")
     detail = client.get(f"/api/books/{upload['book_id']}").json()
@@ -123,27 +123,27 @@ def test_saves_failure_then_successfully_retries(
         files=[("files", ("page.png", image_bytes((20, 30)), "image/png"))],
         data={"rotations": "[0]"},
     ).json()
-    book_id = LocalBookMetadataService().load(storage_path / upload["book_id"]).id
-    failing_service = BookTextProcessingService(
+    document_id = LocalDocumentMetadataService().load(storage_path / upload["book_id"]).id
+    failing_service = DocumentTextProcessingService(
         storage_root=storage_path,
         ocr_provider=FailingProvider(),
     )
 
-    failing_service.prepare_book_job(book_id)
-    failing_service.process_book(book_id)
-    failed = failing_service.load_book(book_id)
+    failing_service.prepare_document_job(document_id)
+    failing_service.process_document(document_id)
+    failed = failing_service.load_document(document_id)
 
     assert failed.status == "failed"
     assert failed.pages[0].processing_status == "failed"
     assert failed.pages[0].error_message == "This page needs another try."
 
-    retry_service = BookTextProcessingService(
+    retry_service = DocumentTextProcessingService(
         storage_root=storage_path,
         ocr_provider=MockOcrProvider(),
     )
-    retry_service.prepare_retry_job(book_id, 1)
-    retry_service.retry_page(book_id, 1)
-    completed = retry_service.load_book(book_id)
+    retry_service.prepare_retry_job(document_id, 1)
+    retry_service.retry_page(document_id, 1)
+    completed = retry_service.load_document(document_id)
 
     assert completed.status == "text_ready"
     assert completed.pages[0].processing_status == "completed"

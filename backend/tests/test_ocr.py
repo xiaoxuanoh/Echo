@@ -31,7 +31,7 @@ def test_previews_one_page_with_mock_provider(client: TestClient) -> None:
     assert result["persisted"] is False
 
 
-def test_preview_does_not_change_book_metadata(
+def test_preview_does_not_change_document_metadata(
     client: TestClient,
     storage_path: Path,
 ) -> None:

@@ -3,7 +3,7 @@ import re
 import unicodedata
 from uuid import UUID
 
-from app.models.books import BookPageRecord
+from app.models.documents import DocumentPageRecord
 
 CJK_RADICAL_REPLACEMENTS = {
     "⻑": "長",
@@ -33,7 +33,7 @@ class TextSegmentationService:
         self.soft_max_seconds = soft_max_seconds
         self.min_seconds = min_seconds
 
-    def segment_pages(self, pages: list[BookPageRecord]) -> list[TextSegmentDraft]:
+    def segment_pages(self, pages: list[DocumentPageRecord]) -> list[TextSegmentDraft]:
         segments: list[TextSegmentDraft] = []
         for page in sorted(pages, key=lambda item: item.page_number):
             text = page.extracted_text.strip()

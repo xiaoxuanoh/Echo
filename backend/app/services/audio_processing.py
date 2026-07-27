@@ -5,8 +5,8 @@ from collections.abc import Callable
 from uuid import UUID, uuid4
 
 from app.core.errors import EchoError
-from app.models.books import AudioSegmentRecord, BookRecord
-from app.services.book_metadata import LocalBookMetadataService
+from app.models.documents import AudioSegmentRecord, DocumentRecord
+from app.services.document_metadata import LocalDocumentMetadataService
 from app.services.text_segmentation import TextSegmentationService
 from app.services.tts import MockTtsProvider, TtsProvider
 
@@ -14,7 +14,7 @@ from app.services.tts import MockTtsProvider, TtsProvider
 logger = logging.getLogger(__name__)
 
 
-class BookAudioProcessingService:
+class DocumentAudioProcessingService:
     """Creates ordered audio segments from prepared page text."""
 
     def __init__(
@@ -27,7 +27,7 @@ class BookAudioProcessingService:
         min_segment_seconds: int = 30,
         tts_provider: TtsProvider | None = None,
         tts_provider_factory: Callable[[str | None], TtsProvider] | None = None,
-        metadata: LocalBookMetadataService | None = None,
+        metadata: LocalDocumentMetadataService | None = None,
     ) -> None:
         self.storage_root = storage_root
         self.segmenter = TextSegmentationService(
@@ -38,53 +38,53 @@ class BookAudioProcessingService:
         )
         self.tts_provider = tts_provider or MockTtsProvider()
         self.tts_provider_factory = tts_provider_factory
-        self.metadata = metadata or LocalBookMetadataService()
+        self.metadata = metadata or LocalDocumentMetadataService()
 
-    def book_directory(self, book_id: UUID) -> Path:
-        return self.storage_root / str(book_id)
+    def document_directory(self, document_id: UUID) -> Path:
+        return self.storage_root / str(document_id)
 
-    def load_book(self, book_id: UUID) -> BookRecord:
-        return self.metadata.load(self.book_directory(book_id))
+    def load_document(self, document_id: UUID) -> DocumentRecord:
+        return self.metadata.load(self.document_directory(document_id))
 
-    def _tts_provider_for(self, book: BookRecord) -> TtsProvider:
+    def _tts_provider_for(self, document: DocumentRecord) -> TtsProvider:
         if self.tts_provider_factory:
-            return self.tts_provider_factory(book.tts_voice)
+            return self.tts_provider_factory(document.tts_voice)
         return self.tts_provider
 
-    def prepare_audio_job(self, book_id: UUID) -> BookRecord:
-        book = self.load_book(book_id)
-        if book.status == "ready" and book.audio_segments:
+    def prepare_audio_job(self, document_id: UUID) -> DocumentRecord:
+        document = self.load_document(document_id)
+        if document.status == "ready" and document.audio_segments:
             raise EchoError(
                 "book_audio_ready",
-                "This book already has listening audio prepared.",
+                "This document already has listening audio prepared.",
                 status_code=409,
             )
-        if book.status == "generating_audio" and book.audio_segments:
+        if document.status == "generating_audio" and document.audio_segments:
             now = datetime.now(UTC)
-            for segment in book.audio_segments:
+            for segment in document.audio_segments:
                 if segment.processing_status in {"generating", "failed"}:
                     segment.processing_status = "pending"
                     segment.error_message = None
                     segment.updated_at = now
-            book.error_message = None
-            book.updated_at = now
-            self.metadata.save(self.book_directory(book.id), book)
-            return book
-        if book.status != "text_ready":
+            document.error_message = None
+            document.updated_at = now
+            self.metadata.save(self.document_directory(document.id), document)
+            return document
+        if document.status != "text_ready":
             raise EchoError(
                 "book_text_not_ready",
                 "Prepare the page text before creating listening audio.",
                 status_code=409,
             )
-        if any(page.processing_status != "completed" for page in book.pages):
+        if any(page.processing_status != "completed" for page in document.pages):
             raise EchoError(
                 "pages_not_ready",
                 "All pages need text before Echo can create listening audio.",
                 status_code=409,
             )
-        self._tts_provider_for(book)
+        self._tts_provider_for(document)
 
-        drafts = self.segmenter.segment_pages(book.pages)
+        drafts = self.segmenter.segment_pages(document.pages)
         if not drafts:
             raise EchoError(
                 "no_text_to_read",
@@ -93,10 +93,10 @@ class BookAudioProcessingService:
             )
 
         now = datetime.now(UTC)
-        book.audio_segments = [
+        document.audio_segments = [
             AudioSegmentRecord(
                 id=uuid4(),
-                book_id=book.id,
+                document_id=document.id,
                 page_id=draft.page_id,
                 segment_number=index,
                 source_text=draft.source_text,
@@ -106,26 +106,26 @@ class BookAudioProcessingService:
             )
             for index, draft in enumerate(drafts, start=1)
         ]
-        book.status = "generating_audio"
-        book.error_message = None
-        book.updated_at = now
-        self.metadata.save(self.book_directory(book.id), book)
-        return book
+        document.status = "generating_audio"
+        document.error_message = None
+        document.updated_at = now
+        self.metadata.save(self.document_directory(document.id), document)
+        return document
 
-    def process_audio(self, book_id: UUID) -> None:
-        book = self.load_book(book_id)
-        audio_directory = self.book_directory(book_id) / "audio"
-        tts_provider = self._tts_provider_for(book)
+    def process_audio(self, document_id: UUID) -> None:
+        document = self.load_document(document_id)
+        audio_directory = self.document_directory(document_id) / "audio"
+        tts_provider = self._tts_provider_for(document)
 
-        for segment in sorted(book.audio_segments, key=lambda item: item.segment_number):
+        for segment in sorted(document.audio_segments, key=lambda item: item.segment_number):
             if segment.processing_status == "completed":
                 continue
             segment.processing_status = "generating"
             segment.error_message = None
             segment.updated_at = datetime.now(UTC)
-            book.status = "generating_audio"
-            book.updated_at = segment.updated_at
-            self.metadata.save(self.book_directory(book.id), book)
+            document.status = "generating_audio"
+            document.updated_at = segment.updated_at
+            self.metadata.save(self.document_directory(document.id), document)
 
             try:
                 filename = (
@@ -143,34 +143,34 @@ class BookAudioProcessingService:
                 segment.processing_status = "failed"
                 segment.error_message = "Echo could not create audio for this segment."
                 logger.exception(
-                    "Unexpected audio failure for book %s segment %s",
-                    book.id,
+                    "Unexpected audio failure for document %s segment %s",
+                    document.id,
                     segment.segment_number,
                 )
 
             segment.updated_at = datetime.now(UTC)
-            book.updated_at = segment.updated_at
-            self.metadata.save(self.book_directory(book.id), book)
+            document.updated_at = segment.updated_at
+            self.metadata.save(self.document_directory(document.id), document)
 
-        self._finalize_book(book)
+        self._finalize_document(document)
 
-    def _finalize_book(self, book: BookRecord) -> None:
+    def _finalize_document(self, document: DocumentRecord) -> None:
         failed_segments = [
             segment
-            for segment in book.audio_segments
+            for segment in document.audio_segments
             if segment.processing_status == "failed"
         ]
         if failed_segments:
-            book.status = "failed"
-            book.error_message = (
+            document.status = "failed"
+            document.error_message = (
                 f"{len(failed_segments)} audio segment"
                 f"{'s' if len(failed_segments) != 1 else ''} need another try."
             )
-        elif book.audio_segments and all(
+        elif document.audio_segments and all(
             segment.processing_status == "completed"
-            for segment in book.audio_segments
+            for segment in document.audio_segments
         ):
-            book.status = "ready"
-            book.error_message = None
-        book.updated_at = datetime.now(UTC)
-        self.metadata.save(self.book_directory(book.id), book)
+            document.status = "ready"
+            document.error_message = None
+        document.updated_at = datetime.now(UTC)
+        self.metadata.save(self.document_directory(document.id), document)
