@@ -22,12 +22,20 @@ class BookAudioProcessingService:
         *,
         storage_root: Path,
         max_segment_characters: int,
+        target_segment_seconds: int = 360,
+        soft_max_segment_seconds: int = 420,
+        min_segment_seconds: int = 30,
         tts_provider: TtsProvider | None = None,
         tts_provider_factory: Callable[[str | None], TtsProvider] | None = None,
         metadata: LocalBookMetadataService | None = None,
     ) -> None:
         self.storage_root = storage_root
-        self.segmenter = TextSegmentationService(max_segment_characters)
+        self.segmenter = TextSegmentationService(
+            max_segment_characters,
+            target_seconds=target_segment_seconds,
+            soft_max_seconds=soft_max_segment_seconds,
+            min_seconds=min_segment_seconds,
+        )
         self.tts_provider = tts_provider or MockTtsProvider()
         self.tts_provider_factory = tts_provider_factory
         self.metadata = metadata or LocalBookMetadataService()

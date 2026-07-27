@@ -101,6 +101,9 @@ def _audio_processing_service(request: Request) -> BookAudioProcessingService:
     return BookAudioProcessingService(
         storage_root=settings.local_storage_path,
         max_segment_characters=settings.tts_segment_max_characters,
+        target_segment_seconds=settings.tts_segment_target_seconds,
+        soft_max_segment_seconds=settings.tts_segment_soft_max_seconds,
+        min_segment_seconds=settings.tts_segment_min_seconds,
         tts_provider_factory=lambda voice: create_tts_provider(
             settings,
             voice_override=voice,

@@ -476,3 +476,34 @@ can be tested locally while Azure account authentication is blocked.
   requested.
 - `tasks/SESSION_LOG.md` already had uncommitted changes before this handoff
   note.
+
+## 2026-07-26 — Site navigation
+
+### Task
+
+Add a shared frontend navigation bar so users can move between the main local
+MVP sections.
+
+### Implementation summary
+
+- Added a reusable `SiteNav` component with links for Home, Library, and
+  Profile.
+- Rendered the navigation from the root frontend layout so it appears across
+  the app.
+- Added a basic local-MVP Profile page.
+- Added focused frontend coverage for link targets and active Library state on
+  nested book routes.
+- Kept the change frontend-only; no backend, domain model, persistence, or
+  architecture changes were introduced.
+
+### Files changed
+
+- `frontend/src/app/layout.tsx`
+- `frontend/src/app/profile/page.tsx`
+- `frontend/src/components/navigation/site-nav.tsx`
+- `frontend/tests/site-nav.test.tsx`
+
+### Publication
+
+- Commit: `a1183c2` (`Add site navigation`)
+- Pushed to `origin/main`.

@@ -150,13 +150,17 @@ ELEVENLABS_API_KEY=
 ELEVENLABS_VOICE_ID=
 ELEVENLABS_MODEL_ID=eleven_multilingual_v2
 ELEVENLABS_OUTPUT_FORMAT=mp3_44100_128
-TTS_SEGMENT_MAX_CHARACTERS=900
+TTS_SEGMENT_MAX_CHARACTERS=3000
+TTS_SEGMENT_TARGET_SECONDS=360
+TTS_SEGMENT_SOFT_MAX_SECONDS=420
+TTS_SEGMENT_MIN_SECONDS=30
 ```
 
-These are development safeguards, not permanent product limits. If the backend
-is started from `backend/`, uploads remain in `backend/data/<book-id>/` so they
-can be inspected. Each directory contains a human-readable `book.json`. This
-storage is temporary and not suitable for long-term use.
+These are development safeguards and listening-segment defaults, not permanent
+product limits. If the backend is started from `backend/`, uploads remain in
+`backend/data/<book-id>/` so they can be inspected. Each directory contains a
+human-readable `book.json`. This storage is temporary and not suitable for
+long-term use.
 
 To try real Cantonese audio, create an Azure Speech resource, then set:
 

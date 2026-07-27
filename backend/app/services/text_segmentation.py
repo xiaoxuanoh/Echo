@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import re
 import unicodedata
 from uuid import UUID
 
@@ -19,8 +20,18 @@ class TextSegmentDraft:
 class TextSegmentationService:
     """Splits prepared page text into ordered chunks suitable for speech."""
 
-    def __init__(self, max_characters: int) -> None:
+    def __init__(
+        self,
+        max_characters: int,
+        *,
+        target_seconds: int = 360,
+        soft_max_seconds: int = 420,
+        min_seconds: int = 30,
+    ) -> None:
         self.max_characters = max_characters
+        self.target_seconds = target_seconds
+        self.soft_max_seconds = soft_max_seconds
+        self.min_seconds = min_seconds
 
     def segment_pages(self, pages: list[BookPageRecord]) -> list[TextSegmentDraft]:
         segments: list[TextSegmentDraft] = []
@@ -57,7 +68,7 @@ class TextSegmentationService:
 
         if current:
             chunks.append(current)
-        return chunks
+        return self._merge_short_final_chunk(chunks)
 
     def _normalize_paragraphs(self, text: str) -> list[str]:
         paragraphs: list[str] = []
@@ -85,9 +96,11 @@ class TextSegmentationService:
         if not paragraphs and text.strip():
             paragraphs.append(text.strip())
 
-        return self._merge_broken_cjk_fragments(
-            [self._remove_cjk_whitespace(paragraph) for paragraph in paragraphs]
-        )
+        cleaned_paragraphs = [
+            self._remove_cjk_whitespace(paragraph) for paragraph in paragraphs
+        ]
+        merged_paragraphs = self._merge_broken_cjk_fragments(cleaned_paragraphs)
+        return self._attach_headings_to_following_paragraphs(merged_paragraphs)
 
     def _normalize_cjk_lookalikes(self, text: str) -> str:
         output = []
@@ -155,6 +168,30 @@ class TextSegmentationService:
                 merged.append(paragraph)
         return merged
 
+    def _attach_headings_to_following_paragraphs(
+        self, paragraphs: list[str]
+    ) -> list[str]:
+        attached: list[str] = []
+        pending_heading: str | None = None
+
+        for paragraph in paragraphs:
+            if self._is_probable_heading(paragraph):
+                if pending_heading is not None:
+                    attached.append(pending_heading)
+                pending_heading = paragraph
+                continue
+
+            if pending_heading is not None:
+                attached.append(f"{pending_heading}\n\n{paragraph}")
+                pending_heading = None
+            else:
+                attached.append(paragraph)
+
+        if pending_heading is not None:
+            attached.append(pending_heading)
+
+        return attached
+
     def _is_short_cjk_fragment(self, text: str) -> bool:
         cjk_count = sum(self._is_cjk(character) for character in text)
         return 0 < cjk_count <= 8 and cjk_count >= len(text.strip()) / 2
@@ -196,17 +233,24 @@ class TextSegmentationService:
         )
 
     def _split_long_piece(self, text: str) -> list[str]:
-        if len(text) <= self.max_characters:
+        if (
+            len(text) <= self.max_characters
+            and self._estimate_spoken_seconds(text) <= self.soft_max_seconds
+        ):
             return [text]
 
         pieces: list[str] = []
         remaining = text
         sentence_marks = "。！？!?；;."
-        while len(remaining) > self.max_characters:
-            window = remaining[: self.max_characters + 1]
+        while (
+            len(remaining) > self.max_characters
+            or self._estimate_spoken_seconds(remaining) > self.soft_max_seconds
+        ):
+            limit_index = self._target_split_index(remaining)
+            window = remaining[: limit_index + 1]
             split_at = max(window.rfind(mark) for mark in sentence_marks)
-            if split_at < max(1, self.max_characters // 2):
-                split_at = self.max_characters
+            if split_at < max(1, limit_index // 2):
+                split_at = limit_index
             else:
                 split_at += 1
             pieces.append(remaining[:split_at].strip())
@@ -214,4 +258,56 @@ class TextSegmentationService:
 
         if remaining:
             pieces.append(remaining)
-        return [piece for piece in pieces if piece]
+        return self._merge_short_final_chunk([piece for piece in pieces if piece])
+
+    def _target_split_index(self, text: str) -> int:
+        char_limit = min(self.max_characters, len(text))
+        best = 1
+        low = 1
+        high = char_limit
+        while low <= high:
+            midpoint = (low + high) // 2
+            if self._estimate_spoken_seconds(text[:midpoint]) <= self.target_seconds:
+                best = midpoint
+                low = midpoint + 1
+            else:
+                high = midpoint - 1
+        return best
+
+    def _merge_short_final_chunk(self, chunks: list[str]) -> list[str]:
+        if len(chunks) < 2:
+            return chunks
+
+        final_chunk = chunks[-1]
+        if self._estimate_spoken_seconds(final_chunk) >= self.min_seconds:
+            return chunks
+
+        candidate = f"{chunks[-2]}\n\n{final_chunk}"
+        if (
+            len(candidate) <= self.max_characters
+            and self._estimate_spoken_seconds(candidate) <= self.soft_max_seconds
+        ):
+            return [*chunks[:-2], candidate]
+        return chunks
+
+    def _estimate_spoken_seconds(self, text: str) -> float:
+        cjk_count = sum(self._is_cjk(character) for character in text)
+        latin_word_count = len(
+            re.findall(r"[A-Za-z0-9]+(?:['-][A-Za-z0-9]+)?", text)
+        )
+        other_spoken_count = sum(
+            1
+            for character in text
+            if (
+                not character.isspace()
+                and not self._is_cjk(character)
+                and not character.isascii()
+            )
+        )
+        pause_count = sum(character in "。！？!?；;，,、：:." for character in text)
+        return (
+            cjk_count / 3.8
+            + latin_word_count / 2.6
+            + other_spoken_count / 3.2
+            + pause_count * 0.2
+        )

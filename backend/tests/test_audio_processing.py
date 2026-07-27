@@ -82,6 +82,71 @@ def test_segments_merge_visual_pdf_line_breaks_before_audio() -> None:
     ]
 
 
+def test_segments_attach_short_heading_to_next_audio_part() -> None:
+    now = datetime.now(UTC)
+    book_id = uuid4()
+    page_id = uuid4()
+    title = "「進可攻、退可守」的期權實戰配置"
+    body = (
+        "想像一下，你是一個在香港生活的上班族，儘管在參與股票買賣方面擁有"
+        "長期經驗或偶然只會跟着市場趨勢買賣股票，但因為大部分時間都是高買"
+        "低賣，所以感覺很沮喪。"
+        + "股票期權能讓投資者在波動市場中更靈活地管理風險和收入。"
+        * 35
+    )
+    page = BookPageRecord(
+        id=page_id,
+        book_id=book_id,
+        page_number=1,
+        extraction_method="embedded_text",
+        extracted_text=f"{title}\n{body}",
+        processing_status="completed",
+        created_at=now,
+        updated_at=now,
+    )
+    service = TextSegmentationService(max_characters=3000)
+
+    segments = service.segment_pages([page])
+
+    assert len(segments) == 1
+    assert segments[0].source_text.startswith(f"{title}\n\n想像一下")
+    assert title not in [segment.source_text for segment in segments]
+    assert all(len(segment.source_text) <= 3000 for segment in segments)
+
+
+def test_segments_do_not_create_tiny_tail_for_slightly_long_cjk_page() -> None:
+    now = datetime.now(UTC)
+    book_id = uuid4()
+    page_id = uuid4()
+    title = "「進可攻、退可守」的期權實戰配置"
+    body = (
+        "想像一下，你是一個在香港生活的上班族，儘管在參與股票買賣方面擁有"
+        "長期經驗或偶然只會跟着市場趨勢買賣股票，但因為大部分時間都是高買"
+        "低賣，所以感覺很沮喪。"
+        + "股票期權能讓投資者在波動市場中更靈活地管理風險和收入。"
+        * 32
+        + "市場參與者類型繁多，有些是純粹的投機者，有些是長期投資者，也"
+    )
+    page = BookPageRecord(
+        id=page_id,
+        book_id=book_id,
+        page_number=1,
+        extraction_method="embedded_text",
+        extracted_text=f"{title}\n{body}",
+        processing_status="completed",
+        created_at=now,
+        updated_at=now,
+    )
+    service = TextSegmentationService(max_characters=3000)
+
+    segments = service.segment_pages([page])
+
+    assert len(segments) == 1
+    assert segments[0].source_text.endswith(
+        "市場參與者類型繁多，有些是純粹的投機者，有些是長期投資者，也"
+    )
+
+
 def test_segments_normalize_cjk_radicals_before_audio() -> None:
     now = datetime.now(UTC)
     book_id = uuid4()
