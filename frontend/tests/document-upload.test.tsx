@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { BookUpload } from "@/components/upload/book-upload";
+import { DocumentUpload } from "@/components/upload/document-upload";
 
 describe("page photo workflow", () => {
   beforeEach(() => {
@@ -27,7 +27,7 @@ describe("page photo workflow", () => {
     fetchMock.mockResolvedValue(
       new Response(
         JSON.stringify({
-          book_id: "temporary-book-id",
+          book_id: "temporary-document-id",
           source_type: "images",
           target_language: "cantonese",
           tts_voice: "zh-HK-HiuMaanNeural",
@@ -64,7 +64,7 @@ describe("page photo workflow", () => {
         { status: 200, headers: { "Content-Type": "application/json" } },
       ),
     );
-    render(<BookUpload />);
+    render(<DocumentUpload />);
     fireEvent.click(
       screen.getByRole("button", { name: /^Upload Page Photos/ }),
     );
@@ -92,10 +92,10 @@ describe("page photo workflow", () => {
     expect(screen.getAllByText("Image ready for text reading")).toHaveLength(2);
     expect(
       screen.getByRole("link", { name: "Review upload" }),
-    ).toHaveAttribute("href", "/books/temporary-book-id");
+    ).toHaveAttribute("href", "/books/temporary-document-id");
   });
 
-  it("submits a target library book when adding another recording", async () => {
+  it("submits a target library document when adding another recording", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock.mockResolvedValue(
       new Response(
@@ -114,10 +114,10 @@ describe("page photo workflow", () => {
       ),
     );
     render(
-      <BookUpload
+      <DocumentUpload
         initialLanguage="mandarin"
-        libraryBookId="folder-id"
-        libraryBookTitle="Ready book"
+        libraryDocumentId="folder-id"
+        libraryDocumentTitle="Ready upload"
       />,
     );
 
@@ -138,7 +138,7 @@ describe("page photo workflow", () => {
     expect(body.get("library_book_id")).toBe("folder-id");
     expect(body.get("target_language")).toBe("mandarin");
     expect(await screen.findByText("Your new recording is prepared")).toBeVisible();
-    expect(screen.getByText("Ready book")).toBeVisible();
+    expect(screen.getByText("Ready upload")).toBeVisible();
   });
 
   it("assigns a new upload to an existing folder from the modal", async () => {
@@ -198,7 +198,7 @@ describe("page photo workflow", () => {
         }),
       );
 
-    render(<BookUpload />);
+    render(<DocumentUpload />);
     fireEvent.change(screen.getByLabelText("Choose PDF"), {
       target: { files: [new File(["pdf"], "chapter.pdf", { type: "application/pdf" })] },
     });
@@ -236,7 +236,7 @@ describe("page photo workflow", () => {
       ),
     );
 
-    render(<BookUpload />);
+    render(<DocumentUpload />);
     fireEvent.change(screen.getByLabelText("Choose PDF"), {
       target: { files: [new File(["pdf"], "chapter.pdf", { type: "application/pdf" })] },
     });

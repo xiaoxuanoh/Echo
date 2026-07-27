@@ -1,13 +1,13 @@
 import type {
   AudioProcessingAccepted,
-  BookAudio,
-  BookDetail,
-  BookLibrary,
-  BookProcessingAccepted,
+  DocumentAudio,
+  DocumentDetail,
+  DocumentLibrary,
+  DocumentProcessingAccepted,
   ImageUploadResult,
   PdfUploadResult,
   Rotation,
-} from "@/types/books";
+} from "@/types/documents";
 import type { ListeningLanguage } from "@/lib/listening-languages";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8001";
@@ -27,21 +27,21 @@ async function parseResponse<T>(
   return body;
 }
 
-export async function getBook(bookId: string): Promise<BookDetail> {
-  return parseResponse<BookDetail>(
-    await fetch(`${API_BASE_URL}/api/books/${bookId}`, { cache: "no-store" }),
-    "Echo could not load this temporary book.",
+export async function getDocument(documentId: string): Promise<DocumentDetail> {
+  return parseResponse<DocumentDetail>(
+    await fetch(`${API_BASE_URL}/api/books/${documentId}`, { cache: "no-store" }),
+    "Echo could not load this temporary document.",
   );
 }
 
-export async function getBookLibrary(): Promise<BookLibrary> {
-  return parseResponse<BookLibrary>(
+export async function getDocumentLibrary(): Promise<DocumentLibrary> {
+  return parseResponse<DocumentLibrary>(
     await fetch(`${API_BASE_URL}/api/books`, { cache: "no-store" }),
     "Echo could not load your local library.",
   );
 }
 
-export async function renameBookFolder(
+export async function renameDocumentFolder(
   folderId: string,
   title: string,
 ): Promise<void> {
@@ -51,16 +51,16 @@ export async function renameBookFolder(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title }),
     }),
-    "Echo could not rename this book.",
+    "Echo could not rename this upload.",
   );
 }
 
-export async function assignBookToFolder(
-  bookId: string,
+export async function assignDocumentToFolder(
+  documentId: string,
   folderId: string,
 ): Promise<void> {
   await parseResponse<{ message: string }>(
-    await fetch(`${API_BASE_URL}/api/books/${bookId}/folder`, {
+    await fetch(`${API_BASE_URL}/api/books/${documentId}/folder`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ folder_id: folderId }),
@@ -69,30 +69,30 @@ export async function assignBookToFolder(
   );
 }
 
-export async function deleteBookFolder(folderId: string): Promise<void> {
+export async function deleteDocumentFolder(folderId: string): Promise<void> {
   await parseResponse<{ message: string }>(
     await fetch(`${API_BASE_URL}/api/books/folders/${folderId}`, {
       method: "DELETE",
     }),
-    "Echo could not remove this book.",
+    "Echo could not remove this upload.",
   );
 }
 
-export async function deleteBookRecording(bookId: string): Promise<void> {
+export async function deleteDocumentRecording(documentId: string): Promise<void> {
   await parseResponse<{ message: string }>(
-    await fetch(`${API_BASE_URL}/api/books/${bookId}`, {
+    await fetch(`${API_BASE_URL}/api/books/${documentId}`, {
       method: "DELETE",
     }),
     "Echo could not remove this recording.",
   );
 }
 
-export async function renameBookRecording(
-  bookId: string,
+export async function renameDocumentRecording(
+  documentId: string,
   title: string,
 ): Promise<void> {
   await parseResponse<{ message: string }>(
-    await fetch(`${API_BASE_URL}/api/books/${bookId}`, {
+    await fetch(`${API_BASE_URL}/api/books/${documentId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title }),
@@ -102,10 +102,10 @@ export async function renameBookRecording(
 }
 
 export async function startTextProcessing(
-  bookId: string,
-): Promise<BookProcessingAccepted> {
-  return parseResponse<BookProcessingAccepted>(
-    await fetch(`${API_BASE_URL}/api/books/${bookId}/process-text`, {
+  documentId: string,
+): Promise<DocumentProcessingAccepted> {
+  return parseResponse<DocumentProcessingAccepted>(
+    await fetch(`${API_BASE_URL}/api/books/${documentId}/process-text`, {
       method: "POST",
     }),
     "Echo could not start preparing the page text.",
@@ -113,30 +113,30 @@ export async function startTextProcessing(
 }
 
 export async function retryPageText(
-  bookId: string,
+  documentId: string,
   pageNumber: number,
-): Promise<BookProcessingAccepted> {
-  return parseResponse<BookProcessingAccepted>(
+): Promise<DocumentProcessingAccepted> {
+  return parseResponse<DocumentProcessingAccepted>(
     await fetch(
-      `${API_BASE_URL}/api/books/${bookId}/pages/${pageNumber}/retry-text`,
+      `${API_BASE_URL}/api/books/${documentId}/pages/${pageNumber}/retry-text`,
       { method: "POST" },
     ),
     `Echo could not retry page ${pageNumber}.`,
   );
 }
 
-export async function getBookAudio(bookId: string): Promise<BookAudio> {
-  return parseResponse<BookAudio>(
-    await fetch(`${API_BASE_URL}/api/books/${bookId}/audio`, { cache: "no-store" }),
+export async function getDocumentAudio(documentId: string): Promise<DocumentAudio> {
+  return parseResponse<DocumentAudio>(
+    await fetch(`${API_BASE_URL}/api/books/${documentId}/audio`, { cache: "no-store" }),
     "Echo could not load the listening audio.",
   );
 }
 
-export async function prepareBookAudio(
-  bookId: string,
+export async function prepareDocumentAudio(
+  documentId: string,
 ): Promise<AudioProcessingAccepted> {
   return parseResponse<AudioProcessingAccepted>(
-    await fetch(`${API_BASE_URL}/api/books/${bookId}/prepare-audio`, {
+    await fetch(`${API_BASE_URL}/api/books/${documentId}/prepare-audio`, {
       method: "POST",
     }),
     "Echo could not start creating listening audio.",
@@ -148,12 +148,12 @@ export function audioFileUrl(path: string): string {
   return `${API_BASE_URL}${path}`;
 }
 
-export function recordingAudioDownloadUrl(bookId: string): string {
-  return `${API_BASE_URL}/api/books/${bookId}/audio/download`;
+export function recordingAudioDownloadUrl(documentId: string): string {
+  return `${API_BASE_URL}/api/books/${documentId}/audio/download`;
 }
 
 type UploadOptions = {
-  libraryBookId?: string;
+  libraryDocumentId?: string;
   targetLanguage?: ListeningLanguage;
 };
 
@@ -163,7 +163,9 @@ export async function uploadPdf(
 ): Promise<PdfUploadResult> {
   const formData = new FormData();
   formData.append("file", file);
-  if (options.libraryBookId) formData.append("library_book_id", options.libraryBookId);
+  if (options.libraryDocumentId) {
+    formData.append("library_book_id", options.libraryDocumentId);
+  }
   if (options.targetLanguage) formData.append("target_language", options.targetLanguage);
   return parseResponse<PdfUploadResult>(
     await fetch(`${API_BASE_URL}/api/books/pdf`, {
@@ -180,7 +182,9 @@ export async function uploadImages(
   const formData = new FormData();
   for (const page of pages) formData.append("files", page.file);
   formData.append("rotations", JSON.stringify(pages.map((page) => page.rotation)));
-  if (options.libraryBookId) formData.append("library_book_id", options.libraryBookId);
+  if (options.libraryDocumentId) {
+    formData.append("library_book_id", options.libraryDocumentId);
+  }
   if (options.targetLanguage) formData.append("target_language", options.targetLanguage);
   return parseResponse<ImageUploadResult>(
     await fetch(`${API_BASE_URL}/api/books/images`, {

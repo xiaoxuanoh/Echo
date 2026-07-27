@@ -1,12 +1,12 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { BookProcessing } from "@/components/books/book-processing";
+import { DocumentProcessing } from "@/components/documents/document-processing";
 
 
-const uploadedBook = {
-  id: "book-id",
-  title: "My book",
+const uploadedDocument = {
+  id: "document-id",
+  title: "My document",
   original_filename: null,
   target_language: "cantonese",
   tts_voice: "zh-HK-HiuMaanNeural",
@@ -35,13 +35,13 @@ const uploadedBook = {
   updated_at: "2026-07-22T00:00:00Z",
 };
 
-const completedBook = {
-  ...uploadedBook,
+const completedDocument = {
+  ...uploadedDocument,
   processing_status: "text_ready",
   completed_pages: 1,
   pages: [
     {
-      ...uploadedBook.pages[0],
+      ...uploadedDocument.pages[0],
       extracted_text: "這是準備好的文字。",
       extracted_character_count: 9,
       processing_status: "completed",
@@ -49,8 +49,8 @@ const completedBook = {
   ],
 };
 
-const readyBook = {
-  ...completedBook,
+const readyDocument = {
+  ...completedDocument,
   processing_status: "ready",
   audio_segment_count: 1,
 };
@@ -62,7 +62,7 @@ function jsonResponse(body: object, status = 200) {
   });
 }
 
-describe("book text preparation", () => {
+describe("document text preparation", () => {
   beforeEach(() => vi.stubGlobal("fetch", vi.fn()));
 
   afterEach(() => {
@@ -74,31 +74,31 @@ describe("book text preparation", () => {
   it("creates listening audio through the full upload workflow", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock
-      .mockResolvedValueOnce(jsonResponse(uploadedBook))
+      .mockResolvedValueOnce(jsonResponse(uploadedDocument))
       .mockResolvedValueOnce(
         jsonResponse(
           {
-            book_id: "book-id",
+            book_id: "document-id",
             processing_status: "running_ocr",
             message: "Echo has started reading the page text.",
           },
           202,
         ),
       )
-      .mockResolvedValueOnce(jsonResponse(completedBook))
+      .mockResolvedValueOnce(jsonResponse(completedDocument))
       .mockResolvedValueOnce(
         jsonResponse(
           {
-            book_id: "book-id",
+            book_id: "document-id",
             processing_status: "generating_audio",
             message: "Echo has started creating listening audio.",
           },
           202,
         ),
       )
-      .mockResolvedValueOnce(jsonResponse(readyBook));
+      .mockResolvedValueOnce(jsonResponse(readyDocument));
 
-    render(<BookProcessing bookId="book-id" />);
+    render(<DocumentProcessing documentId="document-id" />);
     fireEvent.click(
       await screen.findByRole("button", { name: "Create listening audio" }),
     );
@@ -116,20 +116,20 @@ describe("book text preparation", () => {
   it("starts audio directly from the prepared text state", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock
-      .mockResolvedValueOnce(jsonResponse(completedBook))
+      .mockResolvedValueOnce(jsonResponse(completedDocument))
       .mockResolvedValueOnce(
         jsonResponse(
           {
-            book_id: "book-id",
+            book_id: "document-id",
             processing_status: "generating_audio",
             message: "Echo has started creating listening audio.",
           },
           202,
         ),
       )
-      .mockResolvedValueOnce(jsonResponse(readyBook));
+      .mockResolvedValueOnce(jsonResponse(readyDocument));
 
-    render(<BookProcessing bookId="book-id" />);
+    render(<DocumentProcessing documentId="document-id" />);
     fireEvent.click(
       await screen.findByRole("button", { name: "Create listening audio" }),
     );
@@ -137,7 +137,7 @@ describe("book text preparation", () => {
     expect(await screen.findByText("Listening audio is ready.")).toBeVisible();
     expect(screen.getByRole("link", { name: "Listen now" })).toHaveAttribute(
       "href",
-      "/books/book-id/listen",
+      "/books/document-id/listen",
     );
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(fetchMock.mock.calls[1][0]).toContain("/prepare-audio");
@@ -145,14 +145,14 @@ describe("book text preparation", () => {
   });
 
   it("retries a failed page", async () => {
-    const failedBook = {
-      ...uploadedBook,
+    const failedDocument = {
+      ...uploadedDocument,
       processing_status: "failed",
       error_message: "1 page still needs attention.",
       failed_pages: 1,
       pages: [
         {
-          ...uploadedBook.pages[0],
+          ...uploadedDocument.pages[0],
           processing_status: "failed",
           error_message: "Echo could not read the text on this page.",
         },
@@ -160,20 +160,20 @@ describe("book text preparation", () => {
     };
     const fetchMock = vi.mocked(fetch);
     fetchMock
-      .mockResolvedValueOnce(jsonResponse(failedBook))
+      .mockResolvedValueOnce(jsonResponse(failedDocument))
       .mockResolvedValueOnce(
         jsonResponse(
           {
-            book_id: "book-id",
+            book_id: "document-id",
             processing_status: "running_ocr",
             message: "Echo is reading page 1 again.",
           },
           202,
         ),
       )
-      .mockResolvedValueOnce(jsonResponse(completedBook));
+      .mockResolvedValueOnce(jsonResponse(completedDocument));
 
-    render(<BookProcessing bookId="book-id" />);
+    render(<DocumentProcessing documentId="document-id" />);
     fireEvent.click(
       await screen.findByRole("button", { name: "Try this page again" }),
     );
@@ -184,14 +184,14 @@ describe("book text preparation", () => {
   });
 
   it("offers to continue an interrupted local job", async () => {
-    const interruptedBook = {
-      ...uploadedBook,
+    const interruptedDocument = {
+      ...uploadedDocument,
       processing_status: "running_ocr",
       processing_active: false,
     };
-    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(interruptedBook));
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(interruptedDocument));
 
-    render(<BookProcessing bookId="book-id" />);
+    render(<DocumentProcessing documentId="document-id" />);
 
     expect(
       await screen.findByRole("button", { name: "Create listening audio" }),

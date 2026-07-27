@@ -1,9 +1,9 @@
 import Link from "next/link";
 
-import { BookLibrary } from "@/components/books/book-library";
+import { DocumentLibrary } from "@/components/documents/document-library";
 
 
-export default function BooksPage() {
+export default function DocumentsPage() {
   return (
     <main className="flex-1 px-5 py-8 sm:px-8 sm:py-12">
       <div className="mx-auto max-w-5xl">
@@ -32,7 +32,7 @@ export default function BooksPage() {
             </Link>
           </div>
         </div>
-        <BookLibrary />
+        <DocumentLibrary />
       </div>
     </main>
   );

@@ -4,15 +4,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   audioFileUrl,
-  getBookAudio,
-  prepareBookAudio,
+  getDocumentAudio,
+  prepareDocumentAudio,
   recordingAudioDownloadUrl,
-  renameBookRecording,
+  renameDocumentRecording,
 } from "@/lib/api";
-import type { AudioSegment, BookAudio, BookProcessingStatus } from "@/types/books";
+import type { AudioSegment, DocumentAudio, DocumentProcessingStatus } from "@/types/documents";
 
 
-const activeStatuses = new Set<BookProcessingStatus>(["generating_audio"]);
+const activeStatuses = new Set<DocumentProcessingStatus>(["generating_audio"]);
 
 const speedOptions = [0.75, 1, 1.25, 1.5, 2] as const;
 
@@ -23,17 +23,17 @@ type SavedProgress = {
   completed?: boolean;
 };
 
-function progressKey(bookId: string): string {
-  return `echo:${bookId}:listening-progress`;
+function progressKey(documentId: string): string {
+  return `echo:${documentId}:listening-progress`;
 }
 
-function readSavedProgress(bookId: string): SavedProgress | null {
-  const saved = window.localStorage.getItem(progressKey(bookId));
+function readSavedProgress(documentId: string): SavedProgress | null {
+  const saved = window.localStorage.getItem(progressKey(documentId));
   if (!saved) return null;
   try {
     return JSON.parse(saved) as SavedProgress;
   } catch {
-    window.localStorage.removeItem(progressKey(bookId));
+    window.localStorage.removeItem(progressKey(documentId));
     return null;
   }
 }
@@ -47,14 +47,14 @@ function completedSegments(segments: AudioSegment[]): AudioSegment[] {
     .sort((left, right) => left.segment_number - right.segment_number);
 }
 
-function listeningTitle(bookAudio: BookAudio): string {
-  return bookAudio.recording_title ?? bookAudio.original_filename ?? bookAudio.title;
+function listeningTitle(documentAudio: DocumentAudio): string {
+  return documentAudio.recording_title ?? documentAudio.original_filename ?? documentAudio.title;
 }
 
-export function BookAudioPlayer({ bookId }: { bookId: string }) {
+export function DocumentAudioPlayer({ documentId }: { documentId: string }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const progressRestoredRef = useRef(false);
-  const [bookAudio, setBookAudio] = useState<BookAudio | null>(null);
+  const [documentAudio, setDocumentAudio] = useState<DocumentAudio | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [completed, setCompleted] = useState(false);
@@ -66,19 +66,19 @@ export function BookAudioPlayer({ bookId }: { bookId: string }) {
   const [error, setError] = useState<string | null>(null);
 
   const segments = useMemo(
-    () => completedSegments(bookAudio?.segments ?? []),
-    [bookAudio],
+    () => completedSegments(documentAudio?.segments ?? []),
+    [documentAudio],
   );
   const currentSegment = segments[currentIndex] ?? null;
 
   const refresh = useCallback(async () => {
     try {
-      const nextAudio = await getBookAudio(bookId);
-      setBookAudio(nextAudio);
-      setRecordingName(listeningTitle(nextAudio));
+      const nextDocumentAudio = await getDocumentAudio(documentId);
+      setDocumentAudio(nextDocumentAudio);
+      setRecordingName(listeningTitle(nextDocumentAudio));
       if (!progressRestoredRef.current) {
-        const progress = readSavedProgress(bookId);
-        const readySegments = completedSegments(nextAudio.segments);
+        const progress = readSavedProgress(documentId);
+        const readySegments = completedSegments(nextDocumentAudio.segments);
         if (progress) {
           if (Number.isFinite(progress.playbackSpeed)) {
             setPlaybackSpeed(progress.playbackSpeed);
@@ -104,7 +104,7 @@ export function BookAudioPlayer({ bookId }: { bookId: string }) {
     } finally {
       setLoading(false);
     }
-  }, [bookId]);
+  }, [documentId]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void refresh(), 0);
@@ -113,15 +113,15 @@ export function BookAudioPlayer({ bookId }: { bookId: string }) {
 
   useEffect(() => {
     if (
-      !bookAudio ||
-      !activeStatuses.has(bookAudio.processing_status) ||
-      !bookAudio.processing_active
+      !documentAudio ||
+      !activeStatuses.has(documentAudio.processing_status) ||
+      !documentAudio.processing_active
     ) {
       return;
     }
     const timer = window.setInterval(() => void refresh(), 1500);
     return () => window.clearInterval(timer);
-  }, [bookAudio, refresh]);
+  }, [documentAudio, refresh]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -132,7 +132,7 @@ export function BookAudioPlayer({ bookId }: { bookId: string }) {
   function saveProgress(positionSeconds?: number, isCompleted = completed) {
     if (!currentSegment) return;
     window.localStorage.setItem(
-      progressKey(bookId),
+      progressKey(documentId),
       JSON.stringify({
         segmentNumber: currentSegment.segment_number,
         positionSeconds: positionSeconds ?? audioRef.current?.currentTime ?? 0,
@@ -146,7 +146,7 @@ export function BookAudioPlayer({ bookId }: { bookId: string }) {
     setActing(true);
     setError(null);
     try {
-      await prepareBookAudio(bookId);
+      await prepareDocumentAudio(documentId);
       await refresh();
     } catch (caught) {
       setError(
@@ -160,11 +160,11 @@ export function BookAudioPlayer({ bookId }: { bookId: string }) {
   }
 
   async function renameRecording() {
-    if (!bookAudio) return;
+    if (!documentAudio) return;
     setActing(true);
     setError(null);
     try {
-      await renameBookRecording(bookAudio.book_id, recordingName);
+      await renameDocumentRecording(documentAudio.book_id, recordingName);
       await refresh();
       setRenamingRecording(false);
     } catch (caught) {
@@ -194,7 +194,7 @@ export function BookAudioPlayer({ bookId }: { bookId: string }) {
     return <p className="mt-10 text-lg text-muted">Loading the listening page…</p>;
   }
 
-  if (!bookAudio) {
+  if (!documentAudio) {
     return (
       <div className="mt-10 rounded-2xl border border-[#d9b9b4] bg-[#fff3f1] p-5">
         <p role="alert" className="text-[#783a33]">
@@ -212,11 +212,11 @@ export function BookAudioPlayer({ bookId }: { bookId: string }) {
   }
 
   const canStart =
-    bookAudio.processing_status === "text_ready" ||
-    (bookAudio.processing_status === "generating_audio" &&
-      !bookAudio.processing_active);
-  const title = listeningTitle(bookAudio);
-  const showUploadContext = title !== bookAudio.title;
+    documentAudio.processing_status === "text_ready" ||
+    (documentAudio.processing_status === "generating_audio" &&
+      !documentAudio.processing_active);
+  const title = listeningTitle(documentAudio);
+  const showUploadContext = title !== documentAudio.title;
 
   return (
     <div className="mt-8">
@@ -230,7 +230,7 @@ export function BookAudioPlayer({ bookId }: { bookId: string }) {
               {title}
             </h1>
             {showUploadContext && (
-              <p className="mt-1 text-muted">from {bookAudio.title}</p>
+              <p className="mt-1 text-muted">from {documentAudio.title}</p>
             )}
             <p className="mt-1 text-muted">
               {segments.length > 0
@@ -248,7 +248,7 @@ export function BookAudioPlayer({ bookId }: { bookId: string }) {
               >
                 {acting
                   ? "Starting…"
-                  : bookAudio.processing_status === "text_ready"
+                  : documentAudio.processing_status === "text_ready"
                     ? "Create listening audio"
                     : "Continue creating audio"}
               </button>
@@ -265,7 +265,7 @@ export function BookAudioPlayer({ bookId }: { bookId: string }) {
             </button>
             {segments.length > 0 && (
               <a
-                href={recordingAudioDownloadUrl(bookAudio.book_id)}
+                href={recordingAudioDownloadUrl(documentAudio.book_id)}
                 download
                 className="inline-flex min-h-11 items-center justify-center rounded-lg border border-border bg-white px-4 font-semibold hover:bg-[#f8f6f0]"
               >
@@ -308,21 +308,21 @@ export function BookAudioPlayer({ bookId }: { bookId: string }) {
           </div>
         )}
 
-        {bookAudio.processing_status === "generating_audio" &&
-          bookAudio.processing_active && (
+        {documentAudio.processing_status === "generating_audio" &&
+          documentAudio.processing_active && (
             <p className="mt-4 rounded-xl border border-[#d2c69e] bg-[#fff9e8] p-4 text-[#6d5a22]">
               Echo is creating local mock audio. This page will update shortly.
             </p>
           )}
-        {bookAudio.processing_status === "generating_audio" &&
-          !bookAudio.processing_active && (
+        {documentAudio.processing_status === "generating_audio" &&
+          !documentAudio.processing_active && (
             <p className="mt-4 rounded-xl border border-[#d2c69e] bg-[#fff9e8] p-4 text-[#6d5a22]">
               Audio creation appears to have stopped. Continue to resume it.
             </p>
           )}
-        {bookAudio.processing_status !== "text_ready" &&
-          bookAudio.processing_status !== "generating_audio" &&
-          bookAudio.processing_status !== "ready" && (
+        {documentAudio.processing_status !== "text_ready" &&
+          documentAudio.processing_status !== "generating_audio" &&
+          documentAudio.processing_status !== "ready" && (
             <p className="mt-4 rounded-xl border border-[#d2c69e] bg-[#fff9e8] p-4 text-[#6d5a22]">
               Prepare the page text before creating listening audio.
             </p>

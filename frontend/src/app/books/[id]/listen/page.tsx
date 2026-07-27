@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { BookAudioPlayer } from "@/components/books/book-audio-player";
+import { DocumentAudioPlayer } from "@/components/documents/document-audio-player";
 
 
 export default async function ListenPage({
@@ -27,7 +27,7 @@ export default async function ListenPage({
             Raw text
           </Link>
         </div>
-        <BookAudioPlayer bookId={id} />
+        <DocumentAudioPlayer documentId={id} />
       </div>
     </main>
   );

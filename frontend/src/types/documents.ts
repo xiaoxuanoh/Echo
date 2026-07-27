@@ -52,7 +52,7 @@ export type ImageUploadResult = {
 export type UploadResult = PdfUploadResult | ImageUploadResult;
 export type Rotation = 0 | 90 | 180 | 270;
 
-export type BookProcessingStatus =
+export type DocumentProcessingStatus =
   | "uploaded"
   | "normalizing_pages"
   | "inspecting"
@@ -71,7 +71,7 @@ export type PageProcessingStatus =
   | "completed"
   | "failed";
 
-export type BookPageDetail = {
+export type DocumentPageDetail = {
   id: string;
   page_number: number;
   original_filename: string | null;
@@ -83,7 +83,7 @@ export type BookPageDetail = {
   updated_at: string;
 };
 
-export type BookDetail = {
+export type DocumentDetail = {
   id: string;
   title: string;
   original_filename: string | null;
@@ -91,18 +91,18 @@ export type BookDetail = {
   tts_voice: string | null;
   source_type: "pdf" | "images";
   total_pages: number;
-  processing_status: BookProcessingStatus;
+  processing_status: DocumentProcessingStatus;
   error_message: string | null;
   completed_pages: number;
   failed_pages: number;
   audio_segment_count: number;
   processing_active: boolean;
-  pages: BookPageDetail[];
+  pages: DocumentPageDetail[];
   created_at: string;
   updated_at: string;
 };
 
-export type BookLibraryItem = {
+export type DocumentLibraryItem = {
   id: string;
   library_book_id: string;
   title: string;
@@ -112,7 +112,7 @@ export type BookLibraryItem = {
   original_filename: string | null;
   source_type: "pdf" | "images";
   total_pages: number;
-  processing_status: BookProcessingStatus;
+  processing_status: DocumentProcessingStatus;
   error_message: string | null;
   completed_pages: number;
   failed_pages: number;
@@ -122,23 +122,23 @@ export type BookLibraryItem = {
   updated_at: string;
 };
 
-export type BookLibraryFolder = {
+export type DocumentLibraryFolder = {
   id: string;
   title: string;
   recording_count: number;
   total_pages: number;
-  processing_status: BookProcessingStatus;
+  processing_status: DocumentProcessingStatus;
   processing_active: boolean;
   target_languages: ListeningLanguage[];
   latest_recording_at: string;
-  recordings: BookLibraryItem[];
+  recordings: DocumentLibraryItem[];
 };
 
-export type BookLibrary = {
-  folders: BookLibraryFolder[];
+export type DocumentLibrary = {
+  folders: DocumentLibraryFolder[];
 };
 
-export type BookProcessingAccepted = {
+export type DocumentProcessingAccepted = {
   book_id: string;
   processing_status: "extracting_text" | "running_ocr";
   message: string;
@@ -156,14 +156,14 @@ export type AudioSegment = {
   error_message: string | null;
 };
 
-export type BookAudio = {
+export type DocumentAudio = {
   book_id: string;
   title: string;
   recording_title: string | null;
   original_filename: string | null;
   target_language: ListeningLanguage | null;
   tts_voice: string | null;
-  processing_status: BookProcessingStatus;
+  processing_status: DocumentProcessingStatus;
   processing_active: boolean;
   segments: AudioSegment[];
 };

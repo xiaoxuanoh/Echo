@@ -32,8 +32,8 @@ describe("site navigation", () => {
     );
   });
 
-  it("marks book pages as part of the library section", () => {
-    usePathnameMock.mockReturnValue("/books/book-id/listen");
+  it("marks document pages as part of the library section", () => {
+    usePathnameMock.mockReturnValue("/books/document-id/listen");
 
     render(<SiteNav />);
 

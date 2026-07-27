@@ -1,8 +1,8 @@
 import Link from "next/link";
 
-import { BookUpload } from "@/components/upload/book-upload";
+import { DocumentUpload } from "@/components/upload/document-upload";
 
-export default async function NewBookPage({
+export default async function NewDocumentPage({
   searchParams,
 }: {
   searchParams: Promise<{ folderId?: string; folderTitle?: string; language?: string }>;
@@ -33,10 +33,10 @@ export default async function NewBookPage({
           </p>
         </header>
         <section className="mt-5 rounded-2xl border border-border bg-surface p-5 shadow-[0_14px_40px_rgba(48,55,61,0.05)] sm:p-6">
-          <BookUpload
+          <DocumentUpload
             initialLanguage={language}
-            libraryBookId={folderId}
-            libraryBookTitle={folderTitle}
+            libraryDocumentId={folderId}
+            libraryDocumentTitle={folderTitle}
           />
         </section>
       </div>

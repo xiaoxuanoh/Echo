@@ -22,9 +22,9 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 import {
-  assignBookToFolder,
-  getBookLibrary,
-  renameBookFolder,
+  assignDocumentToFolder,
+  getDocumentLibrary,
+  renameDocumentFolder,
   uploadImages,
   uploadPdf,
 } from "@/lib/api";
@@ -36,7 +36,7 @@ import {
   type ListeningLanguage,
 } from "@/lib/listening-languages";
 import { validateNewImages, validatePdf } from "@/lib/upload-validation";
-import type { BookLibraryFolder, Rotation, UploadResult } from "@/types/books";
+import type { DocumentLibraryFolder, Rotation, UploadResult } from "@/types/documents";
 
 type Mode = "pdf" | "images";
 type PendingImage = {
@@ -176,7 +176,7 @@ function SortablePage({
 function UploadDestinationModal({
   step,
   folders,
-  currentBookId,
+  currentDocumentId,
   loading,
   acting,
   error,
@@ -189,8 +189,8 @@ function UploadDestinationModal({
   onCreateFolder,
 }: {
   step: FolderModalStep;
-  folders: BookLibraryFolder[];
-  currentBookId: string;
+  folders: DocumentLibraryFolder[];
+  currentDocumentId: string;
   loading: boolean;
   acting: boolean;
   error: string | null;
@@ -202,7 +202,7 @@ function UploadDestinationModal({
   onNewFolderNameChange: (value: string) => void;
   onCreateFolder: () => void;
 }) {
-  const availableFolders = folders.filter((folder) => folder.id !== currentBookId);
+  const availableFolders = folders.filter((folder) => folder.id !== currentDocumentId);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-5">
@@ -324,11 +324,11 @@ function UploadDestinationModal({
 
 function UploadResultCard({
   result,
-  libraryBookTitle,
+  libraryDocumentTitle,
   cardRef,
 }: {
   result: UploadResult;
-  libraryBookTitle?: string;
+  libraryDocumentTitle?: string;
   cardRef: React.RefObject<HTMLElement | null>;
 }) {
   return (
@@ -341,7 +341,7 @@ function UploadResultCard({
         Upload complete
       </p>
       <h2 className="mt-2 text-2xl font-semibold">
-        {libraryBookTitle
+        {libraryDocumentTitle
           ? "Your new recording is prepared"
           : "Your document pages are prepared"}
       </h2>
@@ -422,14 +422,14 @@ function UploadResultCard({
   );
 }
 
-export function BookUpload({
+export function DocumentUpload({
   initialLanguage,
-  libraryBookId,
-  libraryBookTitle,
+  libraryDocumentId,
+  libraryDocumentTitle,
 }: {
   initialLanguage?: string;
-  libraryBookId?: string;
-  libraryBookTitle?: string;
+  libraryDocumentId?: string;
+  libraryDocumentTitle?: string;
 }) {
   const [mode, setMode] = useState<Mode>("pdf");
   const [targetLanguage, setTargetLanguage] = useState<ListeningLanguage>(
@@ -444,7 +444,7 @@ export function BookUpload({
   const [result, setResult] = useState<UploadResult | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [folderModalStep, setFolderModalStep] = useState<FolderModalStep | null>(null);
-  const [folderModalFolders, setFolderModalFolders] = useState<BookLibraryFolder[]>([]);
+  const [folderModalFolders, setFolderModalFolders] = useState<DocumentLibraryFolder[]>([]);
   const [folderModalLoading, setFolderModalLoading] = useState(false);
   const [folderModalActing, setFolderModalActing] = useState(false);
   const [folderModalError, setFolderModalError] = useState<string | null>(null);
@@ -483,7 +483,7 @@ export function BookUpload({
     setFolderModalStep("existing");
     setFolderModalLoading(true);
     setFolderModalError(null);
-    void getBookLibrary()
+    void getDocumentLibrary()
       .then((library) => setFolderModalFolders(library.folders))
       .catch((caught) => {
         setFolderModalError(
@@ -505,7 +505,7 @@ export function BookUpload({
     setFolderModalActing(true);
     setFolderModalError(null);
     try {
-      await assignBookToFolder(result.book_id, folderId);
+      await assignDocumentToFolder(result.book_id, folderId);
       setFolderModalStep(null);
     } catch (caught) {
       setFolderModalError(
@@ -523,7 +523,7 @@ export function BookUpload({
     setFolderModalActing(true);
     setFolderModalError(null);
     try {
-      await renameBookFolder(result.book_id, newFolderName.trim());
+      await renameDocumentFolder(result.book_id, newFolderName.trim());
       setFolderModalStep(null);
     } catch (caught) {
       setFolderModalError(
@@ -646,12 +646,12 @@ export function BookUpload({
       const uploadResult =
         mode === "pdf"
           ? await uploadPdf(renamedPdfFile(pdf as File, submittedPdfName), {
-              libraryBookId,
+              libraryDocumentId,
               targetLanguage,
             })
-          : await uploadImages(images, { libraryBookId, targetLanguage });
+          : await uploadImages(images, { libraryDocumentId, targetLanguage });
       setResult(uploadResult);
-      if (!libraryBookId) {
+      if (!libraryDocumentId) {
         setNewFolderName(suggestedFolderName(uploadResult));
         setFolderModalError(null);
         setFolderModalStep("choice");
@@ -665,12 +665,12 @@ export function BookUpload({
 
   return (
     <div>
-      {libraryBookTitle && (
+      {libraryDocumentTitle && (
         <div className="mb-6 rounded-2xl border border-[#b9d0da] bg-[#edf4f7] p-4">
           <p className="text-sm font-bold tracking-wide text-accent uppercase">
             Adding to library document
           </p>
-          <p className="mt-1 text-lg font-semibold">{libraryBookTitle}</p>
+          <p className="mt-1 text-lg font-semibold">{libraryDocumentTitle}</p>
         </div>
       )}
 
@@ -898,7 +898,7 @@ export function BookUpload({
       {result && (
         <UploadResultCard
           result={result}
-          libraryBookTitle={libraryBookTitle}
+          libraryDocumentTitle={libraryDocumentTitle}
           cardRef={resultCardRef}
         />
       )}
@@ -907,7 +907,7 @@ export function BookUpload({
         <UploadDestinationModal
           step={folderModalStep}
           folders={folderModalFolders}
-          currentBookId={result.book_id}
+          currentDocumentId={result.book_id}
           loading={folderModalLoading}
           acting={folderModalActing}
           error={folderModalError}

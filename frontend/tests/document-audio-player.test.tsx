@@ -1,14 +1,14 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { BookAudioPlayer } from "@/components/books/book-audio-player";
+import { DocumentAudioPlayer } from "@/components/documents/document-audio-player";
 
 
 const textReadyAudio = {
-  book_id: "book-id",
-  title: "My book",
+  book_id: "document-id",
+  title: "My document",
   recording_title: null,
-  original_filename: "my-book.pdf",
+  original_filename: "my-document.pdf",
   target_language: "cantonese",
   tts_voice: "zh-HK-HiuMaanNeural",
   processing_status: "text_ready",
@@ -26,7 +26,7 @@ const readyAudio = {
       page_id: "page-1",
       page_number: 1,
       source_text: "第一段文字。",
-      audio_url: "/api/books/book-id/audio/1/file",
+      audio_url: "/api/books/document-id/audio/1/file",
       duration_seconds: 1.2,
       processing_status: "completed",
       error_message: null,
@@ -37,7 +37,7 @@ const readyAudio = {
       page_id: "page-2",
       page_number: 2,
       source_text: "第二段文字。",
-      audio_url: "/api/books/book-id/audio/2/file",
+      audio_url: "/api/books/document-id/audio/2/file",
       duration_seconds: 1.2,
       processing_status: "completed",
       error_message: null,
@@ -65,7 +65,7 @@ function installLocalStorageStub() {
   });
 }
 
-describe("book audio player", () => {
+describe("document audio player", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn());
     installLocalStorageStub();
@@ -79,14 +79,14 @@ describe("book audio player", () => {
     window.localStorage.clear();
   });
 
-  it("starts mock audio creation from a text-ready book", async () => {
+  it("starts mock audio creation from a text-ready document", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock
       .mockResolvedValueOnce(jsonResponse(textReadyAudio))
       .mockResolvedValueOnce(
         jsonResponse(
           {
-            book_id: "book-id",
+            book_id: "document-id",
             processing_status: "generating_audio",
             message: "Echo has started creating listening audio.",
           },
@@ -95,7 +95,7 @@ describe("book audio player", () => {
       )
       .mockResolvedValueOnce(jsonResponse(readyAudio));
 
-    render(<BookAudioPlayer bookId="book-id" />);
+    render(<DocumentAudioPlayer documentId="document-id" />);
     fireEvent.click(
       await screen.findByRole("button", { name: "Create listening audio" }),
     );
@@ -116,7 +116,7 @@ describe("book audio player", () => {
       }),
     );
 
-    render(<BookAudioPlayer bookId="book-id" />);
+    render(<DocumentAudioPlayer documentId="document-id" />);
 
     expect(
       await screen.findByRole("heading", { name: "Chapter 1" }),
@@ -136,7 +136,7 @@ describe("book audio player", () => {
         }),
     );
 
-    render(<BookAudioPlayer bookId="book-id" />);
+    render(<DocumentAudioPlayer documentId="document-id" />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Rename recording" }));
     fireEvent.change(screen.getByLabelText("Recording name"), {
@@ -147,7 +147,7 @@ describe("book audio player", () => {
     expect(
       await screen.findByRole("heading", { name: "Chapter 1" }),
     ).toBeVisible();
-    expect(fetchMock.mock.calls[1][0]).toContain("/api/books/book-id");
+    expect(fetchMock.mock.calls[1][0]).toContain("/api/books/document-id");
     expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: "PATCH" });
     expect(fetchMock.mock.calls[1][1]?.body).toBe(
       JSON.stringify({ title: "Chapter 1" }),
@@ -157,26 +157,26 @@ describe("book audio player", () => {
   it("links to the full recording audio download", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(readyAudio));
 
-    render(<BookAudioPlayer bookId="book-id" />);
+    render(<DocumentAudioPlayer documentId="document-id" />);
 
     expect(
       await screen.findByRole("link", { name: "Download recording" }),
     ).toHaveAttribute(
       "href",
-      "http://localhost:8001/api/books/book-id/audio/download",
+      "http://localhost:8001/api/books/document-id/audio/download",
     );
   });
 
   it("moves between ready audio segments", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(readyAudio));
-    const { container } = render(<BookAudioPlayer bookId="book-id" />);
+    const { container } = render(<DocumentAudioPlayer documentId="document-id" />);
 
     expect(await screen.findByRole("heading", { name: "Part 1" })).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Next part" }));
 
     expect(screen.getByRole("heading", { name: "Part 2" })).toBeVisible();
     expect(container.querySelector("audio")?.getAttribute("src")).toContain(
-      "/api/books/book-id/audio/2/file",
+      "/api/books/document-id/audio/2/file",
     );
   });
 
@@ -188,7 +188,7 @@ describe("book audio player", () => {
       }),
     );
 
-    render(<BookAudioPlayer bookId="book-id" />);
+    render(<DocumentAudioPlayer documentId="document-id" />);
 
     expect(
       await screen.findByRole("button", { name: "Continue creating audio" }),
@@ -198,9 +198,9 @@ describe("book audio player", () => {
     ).toBeVisible();
   });
 
-  it("marks the book finished after the final segment ends", async () => {
+  it("marks the document finished after the final segment ends", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(readyAudio));
-    const { container } = render(<BookAudioPlayer bookId="book-id" />);
+    const { container } = render(<DocumentAudioPlayer documentId="document-id" />);
 
     expect(await screen.findByRole("heading", { name: "Part 1" })).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Next part" }));
@@ -210,7 +210,7 @@ describe("book audio player", () => {
     expect(screen.getByRole("button", { name: "Start over" })).toBeVisible();
     expect(
       JSON.parse(
-        window.localStorage.getItem("echo:book-id:listening-progress") ?? "{}",
+        window.localStorage.getItem("echo:document-id:listening-progress") ?? "{}",
       ),
     ).toMatchObject({
       segmentNumber: 2,

@@ -1,9 +1,9 @@
 import Link from "next/link";
 
-import { BookProcessing } from "@/components/books/book-processing";
+import { DocumentProcessing } from "@/components/documents/document-processing";
 
 
-export default async function BookPage({
+export default async function DocumentPage({
   params,
 }: {
   params: Promise<{ id: string }>;
@@ -19,7 +19,7 @@ export default async function BookPage({
         >
           ← Back to upload
         </Link>
-        <BookProcessing bookId={id} />
+        <DocumentProcessing documentId={id} />
       </div>
     </main>
   );

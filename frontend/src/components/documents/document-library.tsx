@@ -4,18 +4,18 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
-  deleteBookFolder,
-  deleteBookRecording,
-  getBookLibrary,
-  renameBookFolder,
-  renameBookRecording,
+  deleteDocumentFolder,
+  deleteDocumentRecording,
+  getDocumentLibrary,
+  renameDocumentFolder,
+  renameDocumentRecording,
 } from "@/lib/api";
 import { languageSummary } from "@/lib/listening-languages";
 import type {
-  BookLibraryFolder,
-  BookLibraryItem,
-  BookProcessingStatus,
-} from "@/types/books";
+  DocumentLibraryFolder,
+  DocumentLibraryItem,
+  DocumentProcessingStatus,
+} from "@/types/documents";
 
 
 type SavedProgress = {
@@ -24,7 +24,7 @@ type SavedProgress = {
   completed?: boolean;
 };
 
-const statusLabels: Record<BookProcessingStatus, string> = {
+const statusLabels: Record<DocumentProcessingStatus, string> = {
   uploaded: "Text not started",
   normalizing_pages: "Preparing pages",
   inspecting: "Checking pages",
@@ -36,22 +36,22 @@ const statusLabels: Record<BookProcessingStatus, string> = {
   failed: "Needs attention",
 };
 
-function progressKey(bookId: string): string {
-  return `echo:${bookId}:listening-progress`;
+function progressKey(documentId: string): string {
+  return `echo:${documentId}:listening-progress`;
 }
 
-function readSavedProgress(bookId: string): SavedProgress | null {
-  const saved = window.localStorage.getItem(progressKey(bookId));
+function readSavedProgress(documentId: string): SavedProgress | null {
+  const saved = window.localStorage.getItem(progressKey(documentId));
   if (!saved) return null;
   try {
     return JSON.parse(saved) as SavedProgress;
   } catch {
-    window.localStorage.removeItem(progressKey(bookId));
+    window.localStorage.removeItem(progressKey(documentId));
     return null;
   }
 }
 
-function recordingHref(recording: BookLibraryItem): string {
+function recordingHref(recording: DocumentLibraryItem): string {
   if (recording.processing_status === "ready") {
     return `/books/${recording.id}/listen`;
   }
@@ -73,11 +73,11 @@ function formatDate(value: string): string {
   }).format(new Date(value));
 }
 
-function recordingLabel(recording: BookLibraryItem, index: number): string {
+function recordingLabel(recording: DocumentLibraryItem, index: number): string {
   return recording.recording_title ?? recording.original_filename ?? `Recording ${index + 1}`;
 }
 
-function uploadMoreHref(folder: BookLibraryFolder): string {
+function uploadMoreHref(folder: DocumentLibraryFolder): string {
   const params = new URLSearchParams({
     folderId: folder.id,
     folderTitle: folder.title,
@@ -85,10 +85,10 @@ function uploadMoreHref(folder: BookLibraryFolder): string {
   return `/books/new?${params.toString()}`;
 }
 
-export function BookLibrary() {
+export function DocumentLibrary() {
   const openMenuRef = useRef<HTMLDivElement | null>(null);
   const selectedFolderIdRef = useRef<string | null>(null);
-  const [folders, setFolders] = useState<BookLibraryFolder[]>([]);
+  const [folders, setFolders] = useState<DocumentLibraryFolder[]>([]);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [progressByRecording, setProgressByRecording] = useState<
     Record<string, SavedProgress | null>
@@ -109,7 +109,7 @@ export function BookLibrary() {
 
   const refresh = useCallback(async () => {
     try {
-      const library = await getBookLibrary();
+      const library = await getDocumentLibrary();
       const nextSelectedFolder =
         library.folders.find((folder) => folder.id === selectedFolderIdRef.current) ??
         library.folders[0] ??
@@ -177,20 +177,20 @@ export function BookLibrary() {
     setActing(true);
     setError(null);
     try {
-      await renameBookFolder(selectedFolder.id, renameValue);
+      await renameDocumentFolder(selectedFolder.id, renameValue);
       await refresh();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Echo could not rename this book.");
+      setError(caught instanceof Error ? caught.message : "Echo could not rename this upload.");
     } finally {
       setActing(false);
     }
   }
 
-  async function renameRecording(recording: BookLibraryItem) {
+  async function renameRecording(recording: DocumentLibraryItem) {
     setActing(true);
     setError(null);
     try {
-      await renameBookRecording(recording.id, recordingRenameValue);
+      await renameDocumentRecording(recording.id, recordingRenameValue);
       await refresh();
     } catch (caught) {
       setError(
@@ -207,21 +207,21 @@ export function BookLibrary() {
     setActing(true);
     setError(null);
     try {
-      await deleteBookFolder(selectedFolder.id);
+      await deleteDocumentFolder(selectedFolder.id);
       await refresh();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Echo could not remove this book.");
+      setError(caught instanceof Error ? caught.message : "Echo could not remove this upload.");
     } finally {
       setActing(false);
     }
   }
 
-  async function removeRecording(recording: BookLibraryItem) {
+  async function removeRecording(recording: DocumentLibraryItem) {
     if (!window.confirm(`Remove "${recording.title}" recording?`)) return;
     setActing(true);
     setError(null);
     try {
-      await deleteBookRecording(recording.id);
+      await deleteDocumentRecording(recording.id);
       window.localStorage.removeItem(progressKey(recording.id));
       await refresh();
     } catch (caught) {
@@ -352,18 +352,20 @@ export function BookLibrary() {
               >
                 Upload more
               </Link>
-              <div className="relative" ref={openMenu === "book" ? openMenuRef : null}>
+              <div className="relative" ref={openMenu === "document" ? openMenuRef : null}>
               <button
                 type="button"
                 aria-haspopup="menu"
-                aria-expanded={openMenu === "book"}
+                aria-expanded={openMenu === "document"}
                 aria-label="Document actions"
-                onClick={() => setOpenMenu((open) => (open === "book" ? null : "book"))}
+                onClick={() =>
+                  setOpenMenu((open) => (open === "document" ? null : "document"))
+                }
                 className="flex size-11 items-center justify-center rounded-lg border border-border bg-white text-2xl font-semibold leading-none hover:bg-[#f8f6f0]"
               >
                 ...
               </button>
-              {openMenu === "book" && (
+              {openMenu === "document" && (
                 <div
                   role="menu"
                   className="absolute right-0 z-10 mt-2 w-44 rounded-xl border border-border bg-white p-2 shadow-[0_14px_35px_rgba(48,55,61,0.12)]"

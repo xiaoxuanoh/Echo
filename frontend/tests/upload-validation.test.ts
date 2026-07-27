@@ -13,7 +13,7 @@ function file(name: string, type: string, size = 10): File {
 
 describe("PDF validation", () => {
   it("accepts a PDF within the limit", () => {
-    expect(validatePdf(file("book.pdf", "application/pdf"))).toBeNull();
+    expect(validatePdf(file("document.pdf", "application/pdf"))).toBeNull();
   });
 
   it("rejects the wrong type and oversized PDFs", () => {

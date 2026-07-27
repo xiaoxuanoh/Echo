@@ -1,13 +1,13 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { BookLibrary } from "@/components/books/book-library";
+import { DocumentLibrary } from "@/components/documents/document-library";
 
 
-const readyBook = {
+const readyDocument = {
   id: "ready-book",
   library_book_id: "folder-id",
-  title: "Ready book",
+  title: "Ready upload",
   recording_title: null,
   target_language: "cantonese",
   tts_voice: "zh-HK-HiuMaanNeural",
@@ -24,11 +24,11 @@ const readyBook = {
   updated_at: "2026-07-24T09:30:00Z",
 };
 
-const uploadedBook = {
-  ...readyBook,
+const uploadedDocument = {
+  ...readyDocument,
   id: "uploaded-book",
   library_book_id: "folder-id",
-  title: "Uploaded book",
+  title: "Uploaded upload",
   recording_title: null,
   original_filename: null,
   source_type: "images",
@@ -40,14 +40,14 @@ const uploadedBook = {
 
 const readyFolder = {
   id: "folder-id",
-  title: "Ready book",
+  title: "Ready upload",
   recording_count: 2,
   total_pages: 3,
   processing_status: "ready",
   processing_active: false,
   target_languages: ["cantonese"],
   latest_recording_at: "2026-07-24T09:30:00Z",
-  recordings: [readyBook, uploadedBook],
+  recordings: [readyDocument, uploadedDocument],
 };
 
 function jsonResponse(body: object, status = 200) {
@@ -70,7 +70,7 @@ function installLocalStorageStub() {
   });
 }
 
-describe("book library", () => {
+describe("document library", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn());
     vi.spyOn(window, "confirm").mockReturnValue(true);
@@ -85,7 +85,7 @@ describe("book library", () => {
     window.localStorage.clear();
   });
 
-  it("shows book folders and recordings with saved listening progress", async () => {
+  it("shows document folders and recordings with saved listening progress", async () => {
     window.localStorage.setItem(
       "echo:ready-book:listening-progress",
       JSON.stringify({ segmentNumber: 2, positionSeconds: 12, playbackSpeed: 1.25 }),
@@ -94,9 +94,9 @@ describe("book library", () => {
       jsonResponse({ folders: [readyFolder] }),
     );
 
-    render(<BookLibrary />);
+    render(<DocumentLibrary />);
 
-    expect(await screen.findAllByText("Ready book")).toHaveLength(2);
+    expect(await screen.findAllByText("Ready upload")).toHaveLength(2);
     expect(screen.getByText(/2 recordings · 3 pages/)).toBeVisible();
     expect(screen.getAllByText("Cantonese")).toHaveLength(2);
     expect(screen.getByText("2 recordings")).toBeVisible();
@@ -112,14 +112,14 @@ describe("book library", () => {
     );
     expect(screen.getByRole("link", { name: "Upload more" })).toHaveAttribute(
       "href",
-      "/books/new?folderId=folder-id&folderTitle=Ready+book",
+      "/books/new?folderId=folder-id&folderTitle=Ready+upload",
     );
   });
 
   it("offers upload when the local library is empty", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ folders: [] }));
 
-    render(<BookLibrary />);
+    render(<DocumentLibrary />);
 
     expect(await screen.findByText("Start your Echo library")).toBeVisible();
     expect(
@@ -127,20 +127,20 @@ describe("book library", () => {
     ).toHaveAttribute("href", "/books/new");
   });
 
-  it("renames a selected book folder", async () => {
-    const renamedFolder = { ...readyFolder, title: "Renamed book" };
+  it("renames a selected document folder", async () => {
+    const renamedFolder = { ...readyFolder, title: "Renamed upload" };
     const fetchMock = vi.mocked(fetch);
     fetchMock
       .mockResolvedValueOnce(jsonResponse({ folders: [readyFolder] }))
       .mockResolvedValueOnce(jsonResponse({ message: "renamed" }))
       .mockResolvedValueOnce(jsonResponse({ folders: [renamedFolder] }));
 
-    render(<BookLibrary />);
+    render(<DocumentLibrary />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Document actions" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Rename saved upload" }));
     const input = await screen.findByLabelText("Saved upload name");
-    fireEvent.change(input, { target: { value: "Renamed book" } });
+    fireEvent.change(input, { target: { value: "Renamed upload" } });
     fireEvent.click(screen.getByRole("button", { name: "Save name" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
@@ -148,10 +148,10 @@ describe("book library", () => {
     expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: "PATCH" });
   });
 
-  it("closes the book actions menu from outside click and escape", async () => {
+  it("closes the document actions menu from outside click and escape", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ folders: [readyFolder] }));
 
-    render(<BookLibrary />);
+    render(<DocumentLibrary />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Document actions" }));
     expect(screen.getByRole("menuitem", { name: "Rename saved upload" })).toBeVisible();
@@ -171,7 +171,7 @@ describe("book library", () => {
   it("renames one recording from its actions menu", async () => {
     const renamedFolder = {
       ...readyFolder,
-      recordings: [{ ...readyBook, recording_title: "Opening section" }, uploadedBook],
+      recordings: [{ ...readyDocument, recording_title: "Opening section" }, uploadedDocument],
     };
     const fetchMock = vi.mocked(fetch);
     fetchMock
@@ -179,7 +179,7 @@ describe("book library", () => {
       .mockResolvedValueOnce(jsonResponse({ message: "renamed" }))
       .mockResolvedValueOnce(jsonResponse({ folders: [renamedFolder] }));
 
-    render(<BookLibrary />);
+    render(<DocumentLibrary />);
 
     fireEvent.click(await screen.findByRole("button", { name: "ready.pdf actions" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Rename recording" }));
@@ -195,7 +195,7 @@ describe("book library", () => {
   it("keeps recording rename controls interactive inside a clickable card", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ folders: [readyFolder] }));
 
-    render(<BookLibrary />);
+    render(<DocumentLibrary />);
 
     fireEvent.click(await screen.findByRole("button", { name: "ready.pdf actions" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Rename recording" }));
@@ -207,14 +207,14 @@ describe("book library", () => {
     expect(screen.getByRole("button", { name: "Save name" })).toBeEnabled();
   });
 
-  it("removes a selected book folder from the actions menu", async () => {
+  it("removes a selected document folder from the actions menu", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock
       .mockResolvedValueOnce(jsonResponse({ folders: [readyFolder] }))
       .mockResolvedValueOnce(jsonResponse({ message: "removed" }))
       .mockResolvedValueOnce(jsonResponse({ folders: [] }));
 
-    render(<BookLibrary />);
+    render(<DocumentLibrary />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Document actions" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Remove saved upload" }));
@@ -231,7 +231,7 @@ describe("book library", () => {
       .mockResolvedValueOnce(jsonResponse({ message: "removed" }))
       .mockResolvedValueOnce(jsonResponse({ folders: [] }));
 
-    render(<BookLibrary />);
+    render(<DocumentLibrary />);
 
     fireEvent.click(await screen.findByRole("button", { name: "ready.pdf actions" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Remove recording" }));
