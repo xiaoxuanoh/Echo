@@ -38,6 +38,7 @@ export function SiteNav() {
         <div className="flex items-center gap-4 sm:gap-6">
           {navItems.map((item) => {
             const isActive = item.matches(pathname);
+            const href = item.href === "/books" && !isSignedIn ? "/profile" : item.href;
 
             return (
               <Link
@@ -48,7 +49,7 @@ export function SiteNav() {
                     ? "border-accent text-foreground"
                     : "border-transparent text-muted hover:text-foreground",
                 ].join(" ")}
-                href={item.href}
+                href={href}
                 key={item.href}
               >
                 {item.label}

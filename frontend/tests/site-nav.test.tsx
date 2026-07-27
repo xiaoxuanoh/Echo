@@ -22,7 +22,7 @@ describe("site navigation", () => {
     vi.clearAllMocks();
   });
 
-  it("links to the main sections", () => {
+  it("links signed-out users to sign in before opening the library", () => {
     usePathnameMock.mockReturnValue("/");
     getSupabaseBrowserClientMock.mockReturnValue(null);
 
@@ -32,7 +32,7 @@ describe("site navigation", () => {
     expect(screen.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/");
     expect(screen.getByRole("link", { name: "Library" })).toHaveAttribute(
       "href",
-      "/books",
+      "/profile",
     );
     expect(screen.getByRole("link", { name: "Profile" })).toHaveAttribute(
       "href",
@@ -79,5 +79,9 @@ describe("site navigation", () => {
 
     expect(await screen.findByLabelText("Signed in")).toBeInTheDocument();
     expect(screen.getByText("Signed in")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Library" })).toHaveAttribute(
+      "href",
+      "/books",
+    );
   });
 });

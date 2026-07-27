@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { DocumentLibrary } from "@/components/documents/document-library";
+import { LibraryAuthGate } from "@/components/auth/library-auth-gate";
 
 
 export default function DocumentsPage() {
@@ -32,7 +32,7 @@ export default function DocumentsPage() {
             </Link>
           </div>
         </div>
-        <DocumentLibrary />
+        <LibraryAuthGate />
       </div>
     </main>
   );
