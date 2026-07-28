@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.services.listening_languages import ListeningLanguage
 
@@ -47,10 +47,30 @@ class DocumentPageRecord(BaseModel):
     extraction_method: ExtractionMethod
     extracted_text: str = ""
     error_message: str | None = None
+    crop_left: float | None = Field(default=None, ge=0, le=1)
+    crop_top: float | None = Field(default=None, ge=0, le=1)
+    crop_right: float | None = Field(default=None, ge=0, le=1)
+    crop_bottom: float | None = Field(default=None, ge=0, le=1)
     rotation_degrees: Literal[0, 90, 180, 270] = 0
     processing_status: DocumentPageStatus
     created_at: datetime
     updated_at: datetime
+
+    @model_validator(mode="after")
+    def validate_crop_bounds(self) -> "DocumentPageRecord":
+        crop_values = [
+            self.crop_left,
+            self.crop_top,
+            self.crop_right,
+            self.crop_bottom,
+        ]
+        if all(value is None for value in crop_values):
+            return self
+        if any(value is None for value in crop_values):
+            raise ValueError("Crop bounds must be saved together.")
+        if self.crop_left >= self.crop_right or self.crop_top >= self.crop_bottom:
+            raise ValueError("Crop bounds must describe a visible area.")
+        return self
 
 
 class AudioSegmentRecord(BaseModel):

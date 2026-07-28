@@ -71,7 +71,7 @@ describe("document text preparation", () => {
     vi.restoreAllMocks();
   });
 
-  it("starts text preparation automatically before listening audio can be created", async () => {
+  it("previews prepared OCR pages before text preparation starts", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock
       .mockResolvedValueOnce(jsonResponse(uploadedDocument))
@@ -99,6 +99,14 @@ describe("document text preparation", () => {
       .mockResolvedValueOnce(jsonResponse(readyDocument));
 
     render(<DocumentProcessing documentId="document-id" />);
+
+    expect(await screen.findByText("Preview pages before OCR")).toBeVisible();
+    expect(screen.getByAltText("Prepared preview of page 1")).toHaveAttribute(
+      "src",
+      "http://localhost:8001/api/books/document-id/pages/1/image",
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Start reading page text" }));
 
     await waitFor(() => expect(fetchMock.mock.calls[1][0]).toContain("/process-text"));
     expect(

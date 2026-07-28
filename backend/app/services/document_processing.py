@@ -18,6 +18,27 @@ ISOLATED_PAGE_NUMBER_PATTERN = re.compile(
     r"^(?:[-–—]\s*)?(?:(?:page|p)\.?\s*|頁\s*|第\s*)?\d{1,4}(?:\s*頁)?(?:\s*[-–—])?$",
     re.IGNORECASE,
 )
+RUNNING_HEADER_PATTERN = re.compile(
+    r"^(?:chapter\s+\d+|第\s*[一二三四五六七八九十百\d]+\s*[章章节節]).{0,30}$",
+    re.IGNORECASE,
+)
+CHART_START_PATTERN = re.compile(
+    r"^(?:圖|图|figure|fig\.?|chart)\s*\d+(?:[.\-]\d+)?\s*[:：]?.*",
+    re.IGNORECASE,
+)
+CHART_SOURCE_PATTERN = re.compile(
+    r"^(?:資料來源|资料来源|來源|来源|source)\s*[:：]?.*",
+    re.IGNORECASE,
+)
+CHART_SHORT_LABEL_PATTERN = re.compile(
+    r"^[\w\s().,%/+-]*$",
+    re.IGNORECASE,
+)
+CHART_PLACEHOLDERS = {
+    "cantonese": "此處有一個圖表。",
+    "mandarin": "此处有一个图表。",
+    "english": "There is a chart here.",
+}
 
 
 class LocalDocumentJobRegistry:
@@ -170,7 +191,10 @@ class DocumentTextProcessingService:
                     "no_page_text",
                     "Echo could not find readable text on this page.",
                 )
-            page.extracted_text = self._remove_isolated_page_number_lines(result.text)
+            page.extracted_text = self._clean_ocr_text(
+                result.text,
+                target_language=document.target_language,
+            )
             page.processing_status = "completed"
             page.error_message = None
         except EchoError as error:
@@ -254,3 +278,71 @@ class DocumentTextProcessingService:
             if not ISOLATED_PAGE_NUMBER_PATTERN.fullmatch(line.strip())
         ]
         return "\n".join(cleaned_lines).strip()
+
+    @classmethod
+    def _clean_ocr_text(
+        cls,
+        text: str,
+        *,
+        target_language: str | None,
+    ) -> str:
+        lines = cls._remove_running_headers(
+            cls._remove_isolated_page_number_lines(text).splitlines()
+        )
+        cleaned_lines = cls._replace_chart_blocks(lines, target_language=target_language)
+        return "\n".join(line for line in cleaned_lines if line.strip()).strip()
+
+    @staticmethod
+    def _remove_running_headers(lines: list[str]) -> list[str]:
+        cleaned = list(lines)
+        for index in (0, len(cleaned) - 1):
+            if not cleaned:
+                break
+            line = cleaned[index].strip()
+            if RUNNING_HEADER_PATTERN.fullmatch(line):
+                cleaned[index] = ""
+        return [line for line in cleaned if line.strip()]
+
+    @classmethod
+    def _replace_chart_blocks(
+        cls,
+        lines: list[str],
+        *,
+        target_language: str | None,
+    ) -> list[str]:
+        output: list[str] = []
+        in_chart_block = False
+        placeholder = cls._chart_placeholder(target_language)
+
+        for line in lines:
+            stripped = line.strip()
+            if not stripped:
+                continue
+
+            if CHART_START_PATTERN.match(stripped):
+                if not output or output[-1] != placeholder:
+                    output.append(placeholder)
+                in_chart_block = True
+                continue
+
+            if in_chart_block and cls._is_probable_chart_support_line(stripped):
+                continue
+
+            in_chart_block = False
+            output.append(line)
+
+        return output
+
+    @staticmethod
+    def _chart_placeholder(target_language: str | None) -> str:
+        return CHART_PLACEHOLDERS.get(target_language or "", CHART_PLACEHOLDERS["english"])
+
+    @staticmethod
+    def _is_probable_chart_support_line(line: str) -> bool:
+        if CHART_SOURCE_PATTERN.match(line):
+            return True
+        if line[-1:] in ".。!?！？":
+            return False
+        if len(line) <= 24:
+            return True
+        return len(line) <= 40 and bool(CHART_SHORT_LABEL_PATTERN.fullmatch(line))

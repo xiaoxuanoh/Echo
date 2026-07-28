@@ -1,12 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 
 import {
   getDocument,
   getDocumentAudio,
   prepareDocumentAudio,
+  preparedPageImageUrl,
   retryPageText,
   startTextProcessing,
 } from "@/lib/api";
@@ -18,7 +20,7 @@ import type {
 
 
 const documentStatusLabels: Record<DocumentProcessingStatus, string> = {
-  uploaded: "Preparing your document",
+  uploaded: "Review prepared pages",
   normalizing_pages: "Preparing the pages",
   inspecting: "Checking the pages",
   extracting_text: "Reading the page text",
@@ -59,7 +61,7 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
   const [acting, setActing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [audioProgress, setAudioProgress] = useState({ completed: 0, total: 0 });
-  const textStartRequestedRef = useRef(false);
+  const embeddedTextStartRequestedRef = useRef(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -67,6 +69,7 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
       setDocument(nextDocument);
       setError(null);
     } catch (caught) {
+      embeddedTextStartRequestedRef.current = false;
       setError(
         caught instanceof Error
           ? caught.message
@@ -141,7 +144,6 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
       await startTextProcessing(documentId);
       await refresh();
     } catch (caught) {
-      textStartRequestedRef.current = false;
       setError(
         caught instanceof Error
           ? caught.message
@@ -156,12 +158,13 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
     if (
       !document ||
       document.processing_status !== "uploaded" ||
-      textStartRequestedRef.current
+      document.pages.some((page) => page.extraction_method === "ocr") ||
+      embeddedTextStartRequestedRef.current
     ) {
       return;
     }
 
-    textStartRequestedRef.current = true;
+    embeddedTextStartRequestedRef.current = true;
     void startTextPreparation();
   }, [document, startTextPreparation]);
 
@@ -204,8 +207,11 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
   }
 
   const isActive = activeStatuses.has(document.processing_status);
+  const ocrPages = document.pages.filter((page) => page.extraction_method === "ocr");
+  const isAwaitingOcrReview =
+    document.processing_status === "uploaded" && ocrPages.length > 0;
   const isPreparingText =
-    document.processing_status === "uploaded" ||
+    (document.processing_status === "uploaded" && ocrPages.length === 0) ||
     textProcessingStatuses.has(document.processing_status);
   const canResumeText =
     textProcessingStatuses.has(document.processing_status) && !document.processing_active;
@@ -282,6 +288,21 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
             Echo is reading your pages first. Listen now will unlock when the text is ready.
           </p>
         )}
+        {isAwaitingOcrReview && (
+          <div className="mt-4 rounded-xl border border-[#b9d0da] bg-[#edf4f7] p-4 text-[#28516a]">
+            <p>
+              Review the prepared page images below before Echo reads the page text.
+            </p>
+            <button
+              type="button"
+              disabled={acting}
+              onClick={() => void startTextPreparation()}
+              className="mt-3 min-h-11 rounded-lg bg-accent px-4 font-semibold text-white transition-colors duration-150 hover:bg-accent-dark disabled:cursor-wait disabled:opacity-60"
+            >
+              {acting ? "Starting..." : "Start reading page text"}
+            </button>
+          </div>
+        )}
         {isActive && document.processing_active && (
           <p className="mt-4 text-sm text-muted" aria-live="polite">
             {document.processing_status === "generating_audio"
@@ -342,6 +363,49 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
           </p>
         )}
       </section>
+
+      {isAwaitingOcrReview && ocrPages.length > 0 && (
+        <section className="mt-7 rounded-3xl border border-border bg-surface p-6 sm:p-8">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 className="text-2xl font-semibold">Preview pages before OCR</h2>
+              <p className="mt-2 max-w-2xl text-muted">
+                These are the prepared page images Echo will read. Check that rotation,
+                crop, and page order look right before starting OCR.
+              </p>
+            </div>
+            <p className="text-sm font-semibold text-muted">{ocrPages.length} pages</p>
+          </div>
+          <ol className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {ocrPages.map((page) => (
+              <li
+                key={page.id}
+                className="overflow-hidden rounded-2xl border border-border bg-white"
+              >
+                <div className="relative aspect-[3/4] bg-[#eeece5]">
+                  <Image
+                    src={preparedPageImageUrl(document.id, page.page_number)}
+                    alt={`Prepared preview of page ${page.page_number}`}
+                    fill
+                    unoptimized
+                    className="object-contain"
+                  />
+                </div>
+                <div className="p-4 text-sm">
+                  <p className="font-semibold">Page {page.page_number}</p>
+                  {page.original_filename ? (
+                    <p className="mt-1 truncate text-muted" title={page.original_filename}>
+                      {page.original_filename}
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-muted">PDF page requiring OCR</p>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
 
       <section className="mt-7 rounded-3xl border border-border bg-surface p-6 sm:p-8">
         <h2 className="text-2xl font-semibold">Upload pages</h2>

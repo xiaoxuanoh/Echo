@@ -152,6 +152,10 @@ export function recordingAudioDownloadUrl(documentId: string): string {
   return `${API_BASE_URL}/api/books/${documentId}/audio/download`;
 }
 
+export function preparedPageImageUrl(documentId: string, pageNumber: number): string {
+  return `${API_BASE_URL}/api/books/${documentId}/pages/${pageNumber}/image`;
+}
+
 type UploadOptions = {
   libraryDocumentId?: string;
   targetLanguage?: ListeningLanguage;

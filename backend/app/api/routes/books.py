@@ -37,6 +37,8 @@ from app.schemas.documents import (
     ImagePageResult,
     ImageUploadResult,
     OcrLineResult,
+    PageCropRequest,
+    PageCropResult,
     PageTextPreviewResult,
     PdfPageResult,
     PdfUploadResult,
@@ -86,6 +88,32 @@ def _page_image_path(book_directory: Path, relative_path: str | None) -> Path:
             status_code=500,
         )
     return page_path
+
+
+def _document_relative_path(
+    book_directory: Path,
+    relative_path: str | None,
+    *,
+    unavailable_code: str,
+    unavailable_message: str,
+    invalid_code: str,
+    invalid_message: str,
+) -> Path:
+    if relative_path is None:
+        raise EchoError(
+            unavailable_code,
+            unavailable_message,
+            status_code=409,
+        )
+    book_root = book_directory.resolve()
+    resolved_path = (book_directory / relative_path).resolve()
+    if not resolved_path.is_relative_to(book_root):
+        raise EchoError(
+            invalid_code,
+            invalid_message,
+            status_code=500,
+        )
+    return resolved_path
 
 
 def _processing_service(request: Request) -> DocumentTextProcessingService:
@@ -145,6 +173,10 @@ def _book_result(
                 extraction_method=page.extraction_method,
                 extracted_text=page.extracted_text,
                 extracted_character_count=len(page.extracted_text),
+                crop_left=page.crop_left,
+                crop_top=page.crop_top,
+                crop_right=page.crop_right,
+                crop_bottom=page.crop_bottom,
                 processing_status=page.processing_status,
                 error_message=page.error_message,
                 updated_at=page.updated_at,
@@ -409,6 +441,141 @@ def preview_page_text(
     )
 
 
+@router.get("/{book_id}/pages/{page_number}/image")
+def get_prepared_page_image(
+    request: Request,
+    book_id: UUID,
+    page_number: int = ApiPath(ge=1),
+) -> FileResponse:
+    settings = request.app.state.settings
+    book_directory = settings.local_storage_path / str(book_id)
+    book = LocalDocumentMetadataService().load(book_directory)
+    page = next(
+        (candidate for candidate in book.pages if candidate.page_number == page_number),
+        None,
+    )
+    if page is None:
+        raise EchoError(
+            "page_not_found",
+            "Echo could not find that page in this temporary upload.",
+            status_code=404,
+        )
+
+    image_path = _page_image_path(book_directory, page.processed_image_path)
+    if not image_path.is_file():
+        raise EchoError(
+            "page_image_missing",
+            "Echo could not find the prepared page image.",
+            status_code=404,
+        )
+    return FileResponse(image_path, media_type="image/png")
+
+
+@router.put(
+    "/{book_id}/pages/{page_number}/crop",
+    response_model=PageCropResult,
+)
+def update_prepared_page_crop(
+    request: Request,
+    crop: PageCropRequest,
+    book_id: UUID,
+    page_number: int = ApiPath(ge=1),
+) -> PageCropResult:
+    settings = request.app.state.settings
+    book_directory = settings.local_storage_path / str(book_id)
+    metadata = LocalDocumentMetadataService()
+    book = metadata.load(book_directory)
+    page = next(
+        (candidate for candidate in book.pages if candidate.page_number == page_number),
+        None,
+    )
+    if page is None:
+        raise EchoError(
+            "page_not_found",
+            "Echo could not find that page in this temporary upload.",
+            status_code=404,
+        )
+    if page.extraction_method != "ocr" or page.processed_image_path is None:
+        raise EchoError(
+            "page_crop_unavailable",
+            "Only pages prepared for OCR can be cropped.",
+            status_code=409,
+        )
+    if book.status != "uploaded" or page.processing_status != "pending":
+        raise EchoError(
+            "page_crop_not_editable",
+            "Crop the page before Echo starts reading its text.",
+            status_code=409,
+        )
+
+    crop_rectangle = (
+        crop.crop_left,
+        crop.crop_top,
+        crop.crop_right,
+        crop.crop_bottom,
+    )
+    destination = _page_image_path(book_directory, page.processed_image_path)
+    image_service = ImageProcessingService(settings.max_image_pixels)
+
+    if page.original_image_path is not None:
+        source_path = _document_relative_path(
+            book_directory,
+            page.original_image_path,
+            unavailable_code="page_original_image_unavailable",
+            unavailable_message="Echo could not find the original page image.",
+            invalid_code="page_original_image_invalid",
+            invalid_message="The original page image path is invalid.",
+        )
+        image_service.normalize_image(
+            source_path,
+            destination,
+            page.rotation_degrees,
+            crop_rectangle,
+        )
+    else:
+        source_pdf = _document_relative_path(
+            book_directory,
+            book.source_storage_path,
+            unavailable_code="source_document_unavailable",
+            unavailable_message="Echo could not find the original PDF.",
+            invalid_code="source_document_invalid",
+            invalid_message="The original PDF path is invalid.",
+        )
+        pdf_service = PdfProcessingService(settings.pdf_text_min_characters)
+        rendered_page = pdf_service.render_page(source_pdf, page.page_number - 1)
+        try:
+            image_service.save_rendered_page(
+                rendered_page,
+                destination,
+                crop_rectangle,
+            )
+        finally:
+            rendered_page.close()
+
+    now = datetime.now(UTC)
+    page.crop_left = crop.crop_left
+    page.crop_top = crop.crop_top
+    page.crop_right = crop.crop_right
+    page.crop_bottom = crop.crop_bottom
+    page.extracted_text = ""
+    page.error_message = None
+    page.processing_status = "pending"
+    page.updated_at = now
+    book.updated_at = now
+    metadata.save(book_directory, book)
+
+    return PageCropResult(
+        book_id=book.id,
+        page_id=page.id,
+        page_number=page.page_number,
+        crop_left=page.crop_left,
+        crop_top=page.crop_top,
+        crop_right=page.crop_right,
+        crop_bottom=page.crop_bottom,
+        processed_image_path=page.processed_image_path,
+    )
+
+
 def _safe_extension(filename: str | None) -> str:
     extension = Path(filename or "").suffix.lower()
     return extension if extension in {".jpg", ".jpeg", ".png"} else ".upload"
@@ -530,6 +697,10 @@ async def upload_pdf(
                 original_image_path=None,
                 processed_image_path=page_record.processed_image_path,
                 extraction_method=page_record.extraction_method,
+                crop_left=page_record.crop_left,
+                crop_top=page_record.crop_top,
+                crop_right=page_record.crop_right,
+                crop_bottom=page_record.crop_bottom,
                 rotation_degrees=0,
                 processing_status=page_record.processing_status,
             )
@@ -628,6 +799,10 @@ async def upload_images(
                     processed_image_path=f"pages/{normalized_filename}",
                     extraction_method="ocr",
                     extracted_character_count=0,
+                    crop_left=None,
+                    crop_top=None,
+                    crop_right=None,
+                    crop_bottom=None,
                     processing_status="pending",
                 )
             )

@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 
 from app.services.listening_languages import ListeningLanguage
 
@@ -38,6 +38,10 @@ class DocumentPageResult(BaseModel):
     processed_image_path: str | None
     extraction_method: Literal["pending", "embedded_text", "ocr"]
     extracted_character_count: int
+    crop_left: float | None = None
+    crop_top: float | None = None
+    crop_right: float | None = None
+    crop_bottom: float | None = None
     rotation_degrees: Literal[0, 90, 180, 270]
     processing_status: Literal["pending", "completed"]
 
@@ -92,6 +96,30 @@ class PageTextPreviewResult(BaseModel):
     persisted: Literal[False] = False
 
 
+class PageCropRequest(BaseModel):
+    crop_left: float = Field(ge=0, le=1)
+    crop_top: float = Field(ge=0, le=1)
+    crop_right: float = Field(ge=0, le=1)
+    crop_bottom: float = Field(ge=0, le=1)
+
+    @model_validator(mode="after")
+    def validate_crop_area(self) -> "PageCropRequest":
+        if self.crop_left >= self.crop_right or self.crop_top >= self.crop_bottom:
+            raise ValueError("Crop bounds must describe a visible area.")
+        return self
+
+
+class PageCropResult(BaseModel):
+    book_id: UUID
+    page_id: UUID
+    page_number: int
+    crop_left: float
+    crop_top: float
+    crop_right: float
+    crop_bottom: float
+    processed_image_path: str
+
+
 class DocumentPageDetailResult(BaseModel):
     id: UUID
     page_number: int
@@ -99,6 +127,10 @@ class DocumentPageDetailResult(BaseModel):
     extraction_method: Literal["pending", "embedded_text", "ocr"]
     extracted_text: str
     extracted_character_count: int
+    crop_left: float | None
+    crop_top: float | None
+    crop_right: float | None
+    crop_bottom: float | None
     processing_status: DocumentPageProcessingStatus
     error_message: str | None
     updated_at: datetime

@@ -22,7 +22,7 @@ describe("page photo workflow", () => {
     vi.restoreAllMocks();
   });
 
-  it("submits the confirmed order and rotation", async () => {
+  it("submits the selected pages and rotation", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock.mockResolvedValue(
       new Response(
@@ -75,8 +75,12 @@ describe("page photo workflow", () => {
       target: { files: [pageOne, pageTwo] },
     });
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Rotate right" })[0]);
-    fireEvent.click(screen.getAllByRole("button", { name: "Later" })[0]);
+    expect(screen.getByRole("button", { name: "Drag page 1 to reorder" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Earlier" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Later" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Rotate left" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Rotate right" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: "Rotate" })[0]);
     fireEvent.click(screen.getByRole("button", { name: "Prepare your upload" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
@@ -84,12 +88,17 @@ describe("page photo workflow", () => {
     const body = request?.body as FormData;
     const filenames = body.getAll("files").map((entry) => (entry as File).name);
 
-    expect(filenames).toEqual(["page-two.png", "page-one.png"]);
-    expect(body.get("rotations")).toBe("[0,90]");
+    expect(filenames).toEqual(["page-one.png", "page-two.png"]);
+    expect(body.get("rotations")).toBe("[90,0]");
     expect(body.get("target_language")).toBe("cantonese");
     expect(await screen.findByText("Your document pages are prepared")).toBeVisible();
     expect(screen.getByText("Page 1 · page-two.png")).toBeVisible();
     expect(screen.getAllByText("Image ready for text reading")).toHaveLength(2);
+    expect(screen.getByText("Preview pages before OCR")).toBeVisible();
+    expect(screen.getByAltText("Prepared preview of page 1")).toHaveAttribute(
+      "src",
+      "http://localhost:8001/api/books/temporary-document-id/pages/1/image",
+    );
     expect(
       screen.getByRole("link", { name: "Review upload" }),
     ).toHaveAttribute("href", "/books/temporary-document-id");

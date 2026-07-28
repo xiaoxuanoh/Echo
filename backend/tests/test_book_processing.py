@@ -37,6 +37,51 @@ def test_ocr_cleanup_preserves_inline_numbers() -> None:
     assert cleaned == text
 
 
+def test_ocr_cleanup_removes_running_header() -> None:
+    text = (
+        "第一章 大戶候機隨勢變招\n"
+        "圖1.1：SPDR 黃金 ETF (GLD) 股價走勢\n"
+        "資料來源：Nasdaq.com\n"
+        "槓效應有限風險。你的核心股票投資組合，負責穩穩增值。"
+    )
+
+    cleaned = DocumentTextProcessingService._clean_ocr_text(
+        text,
+        target_language="cantonese",
+    )
+
+    assert cleaned == (
+        "此處有一個圖表。\n"
+        "槓效應有限風險。你的核心股票投資組合，負責穩穩增值。"
+    )
+
+
+def test_ocr_cleanup_uses_target_language_for_chart_placeholder() -> None:
+    text = (
+        "Figure 1.1: SPDR Gold ETF price trend\n"
+        "USD\n"
+        "Source: Nasdaq.com\n"
+        "The market does not only move upward."
+    )
+
+    mandarin = DocumentTextProcessingService._clean_ocr_text(
+        text,
+        target_language="mandarin",
+    )
+    english = DocumentTextProcessingService._clean_ocr_text(
+        text,
+        target_language="english",
+    )
+    fallback = DocumentTextProcessingService._clean_ocr_text(
+        text,
+        target_language=None,
+    )
+
+    assert mandarin == "此处有一个图表。\nThe market does not only move upward."
+    assert english == "There is a chart here.\nThe market does not only move upward."
+    assert fallback == "There is a chart here.\nThe market does not only move upward."
+
+
 def test_processes_all_image_pages_in_order(
     client: TestClient,
     storage_path: Path,

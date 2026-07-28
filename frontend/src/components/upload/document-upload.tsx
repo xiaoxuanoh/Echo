@@ -24,6 +24,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   assignDocumentToFolder,
   getDocumentLibrary,
+  preparedPageImageUrl,
   renameDocumentFolder,
   uploadImages,
   uploadPdf,
@@ -83,16 +84,12 @@ function nextRotation(current: Rotation, direction: "left" | "right"): Rotation 
 function SortablePage({
   page,
   pageNumber,
-  totalPages,
-  onMove,
   onRotate,
   onRemove,
 }: {
   page: PendingImage;
   pageNumber: number;
-  totalPages: number;
-  onMove: (offset: -1 | 1) => void;
-  onRotate: (direction: "left" | "right") => void;
+  onRotate: () => void;
   onRemove: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
@@ -121,49 +118,31 @@ function SortablePage({
         {page.file.name}
       </p>
       <p className="mt-1 text-xs text-muted">Rotation: {page.rotation}°</p>
-      <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+      <div className="mt-3 grid grid-cols-[2.75rem_1fr_1fr] gap-2 text-sm">
         <button
           type="button"
-          className="rounded-lg border border-border px-2 py-2 hover:bg-[#f4f1e9] disabled:opacity-40"
-          onClick={() => onMove(-1)}
-          disabled={pageNumber === 1}
-        >
-          Earlier
-        </button>
-        <button
-          type="button"
-          className="rounded-lg border border-border px-2 py-2 hover:bg-[#f4f1e9] disabled:opacity-40"
-          onClick={() => onMove(1)}
-          disabled={pageNumber === totalPages}
-        >
-          Later
-        </button>
-        <button
-          type="button"
-          className="rounded-lg border border-border px-2 py-2 hover:bg-[#f4f1e9]"
-          onClick={() => onRotate("left")}
-        >
-          Rotate left
-        </button>
-        <button
-          type="button"
-          className="rounded-lg border border-border px-2 py-2 hover:bg-[#f4f1e9]"
-          onClick={() => onRotate("right")}
-        >
-          Rotate right
-        </button>
-        <button
-          type="button"
-          className="cursor-grab rounded-lg border border-border px-2 py-2 hover:bg-[#f4f1e9] active:cursor-grabbing"
-          aria-label={`Drag page ${pageNumber} to a new position`}
+          className="inline-flex min-h-11 cursor-grab items-center justify-center rounded-lg border border-border hover:bg-[#f4f1e9] active:cursor-grabbing"
+          aria-label={`Drag page ${pageNumber} to reorder`}
+          title="Drag to reorder"
           {...attributes}
           {...listeners}
         >
-          Drag to reorder
+          <span aria-hidden="true" className="grid grid-cols-3 gap-1">
+            {Array.from({ length: 9 }, (_, index) => (
+              <span key={index} className="size-1 rounded-full bg-muted" />
+            ))}
+          </span>
         </button>
         <button
           type="button"
-          className="rounded-lg border border-[#d9b9b4] px-2 py-2 text-[#8a3e35] hover:bg-[#fff3f1]"
+          className="rounded-lg border border-border px-2 py-2 font-semibold hover:bg-[#f4f1e9]"
+          onClick={onRotate}
+        >
+          Rotate
+        </button>
+        <button
+          type="button"
+          className="rounded-lg border border-[#d9b9b4] px-2 py-2 font-semibold text-[#8a3e35] hover:bg-[#fff3f1]"
           onClick={onRemove}
         >
           Remove
@@ -331,6 +310,8 @@ function UploadResultCard({
   libraryDocumentTitle?: string;
   cardRef: React.RefObject<HTMLElement | null>;
 }) {
+  const ocrPages = result.pages.filter((page) => page.extraction_method === "ocr");
+
   return (
     <section
       ref={cardRef}
@@ -409,6 +390,42 @@ function UploadResultCard({
           ))}
         </ol>
       </div>
+      {ocrPages.length > 0 && (
+        <div className="mt-6 border-t border-[#cbded1] pt-5">
+          <h3 className="font-semibold">Preview pages before OCR</h3>
+          <p className="mt-2 text-sm text-muted">
+            Echo will read text from these prepared page images.
+          </p>
+          <ol className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {ocrPages.map((page) => (
+              <li
+                key={page.page_id}
+                className="overflow-hidden rounded-xl border border-[#cbded1] bg-white"
+              >
+                <div className="relative aspect-[3/4] bg-[#eeece5]">
+                  <Image
+                    src={preparedPageImageUrl(result.book_id, page.page_number)}
+                    alt={`Prepared preview of page ${page.page_number}`}
+                    fill
+                    unoptimized
+                    className="object-contain"
+                  />
+                </div>
+                <div className="p-3 text-sm">
+                  <p className="font-semibold">Page {page.page_number}</p>
+                  {page.original_filename ? (
+                    <p className="mt-1 truncate text-muted" title={page.original_filename}>
+                      {page.original_filename}
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-muted">PDF page requiring OCR</p>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
       <p className="mt-5 text-sm text-muted">
         Temporary document ID: {result.book_id}
       </p>
@@ -605,11 +622,6 @@ export function DocumentUpload({
           : page,
       ),
     );
-    setResult(null);
-  }
-
-  function moveImage(index: number, offset: -1 | 1) {
-    setImages((current) => arrayMove(current, index, index + offset));
     setResult(null);
   }
 
@@ -837,7 +849,7 @@ export function DocumentUpload({
                 <div>
                   <h2 className="text-xl font-semibold">Arrange your pages</h2>
                   <p className="mt-1 text-sm text-muted">
-                    Drag pages or use Earlier and Later. Page 1 will be read first.
+                    Use the dot handle to drag pages into order. Page 1 will be read first.
                   </p>
                 </div>
                 <p className="shrink-0 text-sm font-semibold">{images.length} pages</p>
@@ -857,9 +869,7 @@ export function DocumentUpload({
                         key={page.id}
                         page={page}
                         pageNumber={index + 1}
-                        totalPages={images.length}
-                        onMove={(offset) => moveImage(index, offset)}
-                        onRotate={(direction) => rotateImage(page.id, direction)}
+                        onRotate={() => rotateImage(page.id, "right")}
                         onRemove={() => removeImage(page.id)}
                       />
                     ))}

@@ -118,6 +118,108 @@ def test_preserves_image_order_and_applies_rotation(
     assert metadata["pages"][0]["processed_image_path"] == "pages/page-0001.png"
 
 
+def test_serves_prepared_page_image_for_ocr_pages(client: TestClient) -> None:
+    response = client.post(
+        "/api/books/images",
+        files=[("files", ("page.png", image_bytes((20, 30)), "image/png"))],
+        data={"rotations": "[0]"},
+    )
+    assert response.status_code == 200
+    uploaded = response.json()
+
+    image_response = client.get(f"/api/books/{uploaded['book_id']}/pages/1/image")
+
+    assert image_response.status_code == 200
+    assert image_response.headers["content-type"] == "image/png"
+    with Image.open(io.BytesIO(image_response.content)) as image:
+        assert image.format == "PNG"
+
+
+def test_updates_prepared_page_crop_for_image_upload(
+    client: TestClient,
+    storage_path: Path,
+) -> None:
+    response = client.post(
+        "/api/books/images",
+        files=[("files", ("page.png", image_bytes((100, 100)), "image/png"))],
+        data={"rotations": "[0]"},
+    )
+    assert response.status_code == 200
+    uploaded = response.json()
+
+    crop_response = client.put(
+        f"/api/books/{uploaded['book_id']}/pages/1/crop",
+        json={
+            "crop_left": 0.25,
+            "crop_top": 0.1,
+            "crop_right": 0.75,
+            "crop_bottom": 0.9,
+        },
+    )
+
+    assert crop_response.status_code == 200
+    assert crop_response.json()["crop_left"] == 0.25
+    prepared_path = storage_path / uploaded["book_id"] / "pages" / "page-0001.png"
+    with Image.open(prepared_path) as prepared:
+        assert prepared.size == (50, 80)
+
+    metadata = json.loads(
+        (storage_path / uploaded["book_id"] / "book.json").read_text()
+    )
+    assert metadata["pages"][0]["crop_left"] == 0.25
+    assert metadata["pages"][0]["crop_top"] == 0.1
+    assert metadata["pages"][0]["crop_right"] == 0.75
+    assert metadata["pages"][0]["crop_bottom"] == 0.9
+    assert metadata["pages"][0]["original_image_path"].startswith("originals/")
+
+
+def test_rejects_prepared_page_crop_after_text_processing_starts(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/api/books/images",
+        files=[("files", ("page.png", image_bytes((100, 100)), "image/png"))],
+        data={"rotations": "[0]"},
+    )
+    assert response.status_code == 200
+    uploaded = response.json()
+    started = client.post(f"/api/books/{uploaded['book_id']}/process-text")
+    assert started.status_code == 202
+
+    crop_response = client.put(
+        f"/api/books/{uploaded['book_id']}/pages/1/crop",
+        json={
+            "crop_left": 0.25,
+            "crop_top": 0.1,
+            "crop_right": 0.75,
+            "crop_bottom": 0.9,
+        },
+    )
+
+    assert crop_response.status_code == 409
+    assert crop_response.json()["error"]["code"] == "page_crop_not_editable"
+
+
+def test_prepared_page_image_rejects_pages_without_images(client: TestClient) -> None:
+    response = client.post(
+        "/api/books/pdf",
+        files={
+            "file": (
+                "digital.pdf",
+                make_pdf(["This page has embedded text."]),
+                "application/pdf",
+            )
+        },
+    )
+    assert response.status_code == 200
+    uploaded = response.json()
+
+    image_response = client.get(f"/api/books/{uploaded['book_id']}/pages/1/image")
+
+    assert image_response.status_code == 409
+    assert image_response.json()["error"]["code"] == "page_image_unavailable"
+
+
 def test_corrects_exif_orientation_before_user_rotation(tmp_path: Path) -> None:
     from app.services.image_processing import ImageProcessingService
 
@@ -129,6 +231,38 @@ def test_corrects_exif_orientation_before_user_rotation(tmp_path: Path) -> None:
 
     with Image.open(destination) as normalized:
         assert normalized.size == (20, 10)
+
+
+def test_crops_obvious_photo_background_before_ocr(tmp_path: Path) -> None:
+    from app.services.image_processing import ImageProcessingService
+
+    source = tmp_path / "photo.png"
+    destination = tmp_path / "normalized.png"
+    photo = Image.new("RGB", (240, 320), color="#252525")
+    page = Image.new("RGB", (170, 260), color="#f6f0e7")
+    photo.paste(page, (45, 35))
+    photo.save(source)
+
+    ImageProcessingService(max_pixels=100_000).normalize_image(source, destination, 0)
+
+    with Image.open(destination) as normalized:
+        assert normalized.width < photo.width
+        assert normalized.height < photo.height
+        assert normalized.width >= page.width
+        assert normalized.height >= page.height
+
+
+def test_keeps_ambiguous_image_size_when_page_crop_is_unclear(tmp_path: Path) -> None:
+    from app.services.image_processing import ImageProcessingService
+
+    source = tmp_path / "plain.png"
+    destination = tmp_path / "normalized.png"
+    source.write_bytes(image_bytes((120, 180)))
+
+    ImageProcessingService(max_pixels=100_000).normalize_image(source, destination, 0)
+
+    with Image.open(destination) as normalized:
+        assert normalized.size == (120, 180)
 
 
 def test_rejects_invalid_images_rotations_and_count(client: TestClient) -> None:
