@@ -1,7 +1,5 @@
-import Link from "next/link";
-
+import { LibraryPageActions } from "@/components/auth/library-page-actions";
 import { LibraryAuthGate } from "@/components/auth/library-auth-gate";
-
 
 export default function DocumentsPage() {
   return (
@@ -17,20 +15,7 @@ export default function DocumentsPage() {
               Return to saved uploads, continue preparation, or resume listening.
             </p>
           </div>
-          <div className="flex w-full flex-col gap-3 sm:w-auto">
-            <Link
-              href="/books/new"
-              className="inline-flex min-h-12 items-center justify-center rounded-xl bg-accent px-5 font-semibold text-white hover:bg-accent-dark"
-            >
-              Upload new file
-            </Link>
-            <Link
-              href="/"
-              className="inline-flex min-h-12 items-center justify-center rounded-xl border border-border bg-surface px-5 font-semibold text-foreground hover:bg-[#f8f6f0]"
-            >
-              Main page
-            </Link>
-          </div>
+          <LibraryPageActions />
         </div>
         <LibraryAuthGate />
       </div>

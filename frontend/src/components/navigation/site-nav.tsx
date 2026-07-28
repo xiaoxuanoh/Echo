@@ -38,18 +38,17 @@ export function SiteNav() {
         <div className="flex items-center gap-4 sm:gap-6">
           {navItems.map((item) => {
             const isActive = item.matches(pathname);
-            const href = item.href === "/books" && !isSignedIn ? "/profile" : item.href;
 
             return (
               <Link
                 aria-current={isActive ? "page" : undefined}
                 className={[
-                  "inline-flex min-h-11 items-center border-b-2 text-sm font-semibold transition-colors",
+                  "relative inline-flex min-h-11 items-center text-sm font-semibold transition-colors after:absolute after:right-0 after:bottom-0 after:left-0 after:h-0.5 after:origin-center after:bg-accent after:transition-transform after:duration-300",
                   isActive
-                    ? "border-accent text-foreground"
-                    : "border-transparent text-muted hover:text-foreground",
+                    ? "text-foreground after:scale-x-100"
+                    : "text-muted after:scale-x-0 hover:text-foreground hover:after:scale-x-100",
                 ].join(" ")}
-                href={href}
+                href={item.href}
                 key={item.href}
               >
                 {item.label}

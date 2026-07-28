@@ -6,6 +6,7 @@ import { FormEvent, useState } from "react";
 import { useAuthSession } from "@/components/auth/use-auth-session";
 
 type CreateAccountStep = "email" | "password" | "name";
+type SignInStep = "email" | "password";
 
 function getDisplayName(session: Session) {
   const displayName = session.user.user_metadata?.display_name;
@@ -16,10 +17,15 @@ function getDisplayName(session: Session) {
 }
 
 export function AuthPanel() {
-  const { isLoadingSession, session, setSession, supabase } = useAuthSession();
+  const { authEvent, isLoadingSession, session, setSession, supabase } =
+    useAuthSession();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [signInStep, setSignInStep] = useState<SignInStep>("email");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [resetPassword, setResetPassword] = useState("");
+  const [resetPasswordConfirmation, setResetPasswordConfirmation] = useState("");
+  const [passwordRecoveryComplete, setPasswordRecoveryComplete] = useState(false);
   const [isCreateAccountOpen, setIsCreateAccountOpen] = useState(false);
   const [createAccountStep, setCreateAccountStep] =
     useState<CreateAccountStep>("email");
@@ -29,6 +35,8 @@ export function AuthPanel() {
     useState("");
   const [createDisplayName, setCreateDisplayName] = useState("");
   const [createError, setCreateError] = useState<string | null>(null);
+  const [confirmationEmail, setConfirmationEmail] = useState<string | null>(null);
+  const [passwordResetEmail, setPasswordResetEmail] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -39,9 +47,24 @@ export function AuthPanel() {
     setCreatePasswordConfirmation("");
     setCreateDisplayName("");
     setCreateError(null);
+    setConfirmationEmail(null);
+    setPasswordResetEmail(null);
     setError(null);
     setMessage(null);
     setIsCreateAccountOpen(true);
+  }
+
+  function returnToEmailStep() {
+    if (isSubmitting) {
+      return;
+    }
+
+    setPassword("");
+    setError(null);
+    setMessage(null);
+    setConfirmationEmail(null);
+    setPasswordResetEmail(null);
+    setSignInStep("email");
   }
 
   function closeCreateAccount() {
@@ -60,9 +83,18 @@ export function AuthPanel() {
       return;
     }
 
-    setIsSubmitting(true);
     setError(null);
     setMessage(null);
+    setConfirmationEmail(null);
+    setPasswordResetEmail(null);
+
+    if (signInStep === "email") {
+      setEmail(email.trim());
+      setSignInStep("password");
+      return;
+    }
+
+    setIsSubmitting(true);
 
     const credentials = { email: email.trim(), password };
     const { data, error: authError } =
@@ -76,8 +108,71 @@ export function AuthPanel() {
     }
 
     setPassword("");
+    setSignInStep("email");
     setSession(data.session);
     setMessage("You are signed in.");
+  }
+
+  async function handleSendPasswordReset() {
+    if (!supabase || !email.trim()) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError(null);
+    setMessage(null);
+    setConfirmationEmail(null);
+    setPasswordResetEmail(null);
+
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+      email.trim(),
+      {
+        redirectTo: `${window.location.origin}/profile`,
+      },
+    );
+
+    setIsSubmitting(false);
+
+    if (resetError) {
+      setError(resetError.message);
+      return;
+    }
+
+    setPasswordResetEmail(email.trim());
+  }
+
+  async function handleUpdateRecoveredPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!supabase) {
+      return;
+    }
+
+    setError(null);
+    setMessage(null);
+
+    if (resetPassword !== resetPasswordConfirmation) {
+      setError("Passwords do not match.");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    const { error: updateError } = await supabase.auth.updateUser({
+      password: resetPassword,
+    });
+
+    setIsSubmitting(false);
+
+    if (updateError) {
+      setError(updateError.message);
+      return;
+    }
+
+    setResetPassword("");
+    setResetPasswordConfirmation("");
+    setPasswordRecoveryComplete(true);
+    setMessage("Your password has been updated.");
   }
 
   async function handleCreateAccount(event: FormEvent<HTMLFormElement>) {
@@ -108,6 +203,7 @@ export function AuthPanel() {
     setIsSubmitting(true);
     setError(null);
     setMessage(null);
+    setPasswordResetEmail(null);
 
     const displayName = createDisplayName.trim();
     const { data, error: authError } = await supabase.auth.signUp({
@@ -132,11 +228,16 @@ export function AuthPanel() {
     setCreatePasswordConfirmation("");
     setCreateDisplayName("");
     setSession(data.session);
-    setMessage(
-      data.session
-        ? "Your account is ready."
-        : "Check your email to confirm your account.",
-    );
+
+    if (data.session) {
+      setMessage("Your account is ready.");
+      return;
+    }
+
+    setEmail(createEmail.trim());
+    setPassword("");
+    setSignInStep("email");
+    setConfirmationEmail(createEmail.trim());
   }
 
   async function handleSignOut() {
@@ -147,6 +248,8 @@ export function AuthPanel() {
     setIsSubmitting(true);
     setError(null);
     setMessage(null);
+    setConfirmationEmail(null);
+    setPasswordResetEmail(null);
 
     const { error: signOutError } = await supabase.auth.signOut();
 
@@ -158,32 +261,103 @@ export function AuthPanel() {
     }
 
     setSession(null);
+    setSignInStep("email");
+    setPassword("");
     setMessage("You are signed out.");
   }
 
   const displayName = session ? getDisplayName(session) : null;
+  const isPasswordRecovery =
+    authEvent === "PASSWORD_RECOVERY" && !passwordRecoveryComplete;
 
   if (!supabase) {
     return (
-      <section className="mt-8 rounded-2xl border border-border bg-surface p-5 shadow-[0_14px_40px_rgba(48,55,61,0.05)] sm:p-6">
-        <h2 className="text-2xl font-semibold">Supabase Auth</h2>
-        <p className="mt-3 max-w-2xl leading-7 text-muted">
-          Sign in is not available until the local Supabase settings are added.
-        </p>
-        <p className="mt-3 rounded-xl border border-border bg-background px-4 py-3 text-sm text-muted">
-          Add <code>NEXT_PUBLIC_SUPABASE_URL</code> and{" "}
-          <code>NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY</code> to{" "}
-          <code>frontend/.env.local</code>.
-        </p>
+      <section className="mx-auto mt-10 max-w-2xl overflow-hidden rounded-2xl border border-border bg-surface shadow-[0_18px_55px_rgba(48,55,61,0.08)] transition-shadow duration-300 hover:shadow-[0_24px_70px_rgba(48,55,61,0.12)]">
+        <div className="border-b border-border bg-[#fbfaf6] px-6 py-4 sm:px-8">
+          <span className="inline-flex min-h-9 items-center rounded-full border border-[#d6e1df] bg-white px-3 text-sm font-semibold text-muted">
+            Account setup
+          </span>
+        </div>
+        <div className="p-6 sm:p-8">
+          <h2 className="text-2xl font-semibold">Supabase Auth</h2>
+          <p className="mt-3 max-w-xl leading-7 text-muted">
+            Sign in is not available until the local Supabase settings are added.
+          </p>
+          <p className="mt-5 rounded-xl border border-border bg-background px-4 py-3 text-sm text-muted">
+            Add <code>NEXT_PUBLIC_SUPABASE_URL</code> and{" "}
+            <code>NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY</code> to{" "}
+            <code>frontend/.env.local</code>.
+          </p>
+        </div>
       </section>
     );
   }
 
   return (
     <>
-      <section className="mt-8 rounded-2xl border border-border bg-surface p-5 shadow-[0_14px_40px_rgba(48,55,61,0.05)] sm:p-6">
-        {session ? (
-          <>
+      <section className="mx-auto mt-10 max-w-2xl overflow-hidden rounded-2xl border border-border bg-surface shadow-[0_18px_55px_rgba(48,55,61,0.08)] transition-shadow duration-300 hover:shadow-[0_24px_70px_rgba(48,55,61,0.12)]">
+        {session && isPasswordRecovery ? (
+          <div className="p-6 sm:p-8">
+            <div>
+              <div
+                aria-hidden="true"
+                className="flex h-14 w-14 items-center justify-center rounded-2xl border border-[#cfdedb] bg-[#edf4f2]"
+              >
+                <span className="h-6 w-4 rounded-b-md rounded-t-sm border-2 border-accent border-t-4" />
+              </div>
+              <h2 className="mt-6 text-2xl font-semibold">Choose a new password</h2>
+              <p className="mt-3 max-w-xl leading-7 text-muted">
+                Enter a new password for your Echo account.
+              </p>
+            </div>
+
+            <form
+              className="mt-6 grid gap-4"
+              onSubmit={handleUpdateRecoveredPassword}
+            >
+              <label className="grid gap-2 font-semibold" htmlFor="reset-password">
+                New password
+                <input
+                  autoComplete="new-password"
+                  autoFocus
+                  className="min-h-12 rounded-xl border border-border bg-background px-4 font-normal transition-colors duration-150 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-background"
+                  id="reset-password"
+                  minLength={6}
+                  onChange={(event) => setResetPassword(event.target.value)}
+                  required
+                  type="password"
+                  value={resetPassword}
+                />
+              </label>
+              <label
+                className="grid gap-2 font-semibold"
+                htmlFor="reset-password-confirmation"
+              >
+                Confirm new password
+                <input
+                  autoComplete="new-password"
+                  className="min-h-12 rounded-xl border border-border bg-background px-4 font-normal transition-colors duration-150 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-background"
+                  id="reset-password-confirmation"
+                  minLength={6}
+                  onChange={(event) =>
+                    setResetPasswordConfirmation(event.target.value)
+                  }
+                  required
+                  type="password"
+                  value={resetPasswordConfirmation}
+                />
+              </label>
+              <button
+                className="inline-flex min-h-12 items-center justify-center rounded-xl bg-accent px-5 font-semibold text-white shadow-sm transition-colors duration-150 hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-60 sm:w-fit"
+                disabled={isSubmitting}
+                type="submit"
+              >
+                {isSubmitting ? "Working..." : "Update password"}
+              </button>
+            </form>
+          </div>
+        ) : session ? (
+          <div className="p-6 sm:p-8">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <h2 className="text-2xl font-semibold">User information</h2>
@@ -195,7 +369,7 @@ export function AuthPanel() {
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <button
-                  className="inline-flex min-h-12 items-center justify-center rounded-xl border border-[#d98080] bg-[#fff1f1] px-5 font-semibold text-[#8a3434] hover:bg-[#f8dede] disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex min-h-12 items-center justify-center rounded-xl border border-[#d98080] bg-[#fff1f1] px-5 font-semibold text-[#8a3434] transition hover:bg-[#f8dede] disabled:cursor-not-allowed disabled:opacity-60"
                   disabled={isSubmitting}
                   onClick={handleSignOut}
                   type="button"
@@ -242,78 +416,142 @@ export function AuthPanel() {
                 </div>
               </dl>
             </details>
-          </>
+          </div>
         ) : (
           <>
-            <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="border-b border-border bg-[#fbfaf6] px-6 py-4 sm:px-8">
+              <span className="inline-flex min-h-9 items-center rounded-full border border-[#d6e1df] bg-white px-3 text-sm font-semibold text-muted">
+                {isLoadingSession ? "Checking session" : "Signed out"}
+              </span>
+            </div>
+            <div className="p-6 sm:p-8">
               <div>
-                <h2 className="text-2xl font-semibold">Sign in</h2>
-                <p className="mt-2 leading-7 text-muted">
+                <div
+                  aria-hidden="true"
+                  className="flex h-14 w-14 items-center justify-center rounded-2xl border border-[#cfdedb] bg-[#edf4f2]"
+                >
+                  <span className="h-6 w-4 rounded-b-md rounded-t-sm border-2 border-accent border-t-4" />
+                </div>
+                <h2 className="mt-6 text-2xl font-semibold">Sign in</h2>
+                <p className="mt-3 max-w-xl leading-7 text-muted">
                   Sign in now so Echo can connect your documents and progress to
                   your account when cloud sync is enabled.
                 </p>
               </div>
-              <span className="rounded-full border border-border px-3 py-1 text-sm font-semibold text-muted">
-                {isLoadingSession ? "Checking session" : "Signed out"}
-              </span>
+
+              <form className="mt-6 grid gap-4" onSubmit={handleSignIn}>
+                <div className="auth-step-panel grid gap-4" key={signInStep}>
+                  {signInStep === "email" ? (
+                    <label
+                      className="grid gap-2 font-semibold"
+                      htmlFor="auth-email"
+                    >
+                      Email
+                      <input
+                        autoComplete="email"
+                        autoFocus
+                        className="min-h-12 rounded-xl border border-border bg-background px-4 font-normal transition-colors duration-150 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-background"
+                        id="auth-email"
+                        onChange={(event) => setEmail(event.target.value)}
+                        required
+                        type="email"
+                        value={email}
+                      />
+                    </label>
+                  ) : (
+                    <>
+                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-background px-4 py-3">
+                        <span className="break-all text-sm font-semibold text-muted">
+                          {email}
+                        </span>
+                        <button
+                          className="font-semibold text-accent transition-colors duration-150 hover:text-accent-dark disabled:cursor-not-allowed disabled:opacity-60"
+                          disabled={isSubmitting}
+                          onClick={returnToEmailStep}
+                          type="button"
+                        >
+                          Change
+                        </button>
+                      </div>
+                      <label
+                        className="grid gap-2 font-semibold"
+                        htmlFor="auth-password"
+                      >
+                        Password
+                        <input
+                          autoComplete="current-password"
+                          autoFocus
+                          className="min-h-12 rounded-xl border border-border bg-background px-4 font-normal transition-colors duration-150 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-background"
+                          id="auth-password"
+                          minLength={6}
+                          onChange={(event) => setPassword(event.target.value)}
+                          required
+                          type="password"
+                          value={password}
+                        />
+                      </label>
+                      <button
+                        className="w-fit font-semibold text-accent transition-colors duration-150 hover:text-accent-dark disabled:cursor-not-allowed disabled:opacity-60"
+                        disabled={isSubmitting}
+                        onClick={handleSendPasswordReset}
+                        type="button"
+                      >
+                        Forgot password?
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap justify-center gap-3">
+                  <button
+                    className="inline-flex min-h-12 items-center justify-center rounded-xl bg-accent px-5 font-semibold text-white shadow-sm transition-colors duration-150 hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={isSubmitting}
+                    type="submit"
+                  >
+                    {isSubmitting
+                      ? "Working..."
+                      : signInStep === "email"
+                        ? "Continue"
+                        : "Sign in"}
+                  </button>
+                  <button
+                    className="inline-flex min-h-12 items-center justify-center rounded-xl border border-border bg-background px-5 font-semibold text-foreground transition-colors duration-150 hover:bg-[#f8f6f0] disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={isSubmitting}
+                    onClick={openCreateAccount}
+                    type="button"
+                  >
+                    Create account
+                  </button>
+                </div>
+                <p className="text-center text-sm leading-6 text-muted">
+                  Your library will be available after signing in.
+                </p>
+              </form>
             </div>
-
-            <form className="mt-6 grid gap-4" onSubmit={handleSignIn}>
-              <label className="grid gap-2 font-semibold" htmlFor="auth-email">
-                Email
-                <input
-                  autoComplete="email"
-                  className="min-h-12 rounded-xl border border-border bg-background px-4 font-normal"
-                  id="auth-email"
-                  onChange={(event) => setEmail(event.target.value)}
-                  required
-                  type="email"
-                  value={email}
-                />
-              </label>
-
-              <label className="grid gap-2 font-semibold" htmlFor="auth-password">
-                Password
-                <input
-                  autoComplete="current-password"
-                  className="min-h-12 rounded-xl border border-border bg-background px-4 font-normal"
-                  id="auth-password"
-                  minLength={6}
-                  onChange={(event) => setPassword(event.target.value)}
-                  required
-                  type="password"
-                  value={password}
-                />
-              </label>
-
-              <div className="flex flex-wrap justify-center gap-3">
-                <button
-                  className="inline-flex min-h-12 items-center justify-center rounded-xl bg-accent px-5 font-semibold text-white hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={isSubmitting}
-                  type="submit"
-                >
-                  {isSubmitting ? "Working..." : "Sign in"}
-                </button>
-                <button
-                  className="inline-flex min-h-12 items-center justify-center rounded-xl border border-border bg-background px-5 font-semibold text-foreground hover:bg-[#f8f6f0] disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={isSubmitting}
-                  onClick={openCreateAccount}
-                  type="button"
-                >
-                  Create account
-                </button>
-              </div>
-            </form>
           </>
         )}
 
         {message ? (
-          <p className="mt-4 rounded-xl border border-[#b9d2c1] bg-[#ecf6ef] px-4 py-3 text-sm font-semibold text-[#28543a]">
+          <p className="mx-6 mb-6 rounded-xl border border-[#b9d2c1] bg-[#ecf6ef] px-4 py-3 text-sm font-semibold text-[#28543a] sm:mx-8">
             {message}
           </p>
         ) : null}
+        {confirmationEmail ? (
+          <p className="mx-6 mb-6 rounded-xl border border-[#b9d0da] bg-[#edf4f7] px-4 py-3 text-sm font-semibold text-[#28516a] sm:mx-8">
+            We sent a confirmation link to{" "}
+            <strong className="break-all">{confirmationEmail}</strong>. Confirm
+            your email, then return here to sign in.
+          </p>
+        ) : null}
+        {passwordResetEmail ? (
+          <p className="mx-6 mb-6 rounded-xl border border-[#b9d0da] bg-[#edf4f7] px-4 py-3 text-sm font-semibold text-[#28516a] sm:mx-8">
+            We sent a password reset link to{" "}
+            <strong className="break-all">{passwordResetEmail}</strong>. Follow
+            the link in that email to choose a new password.
+          </p>
+        ) : null}
         {error ? (
-          <p className="mt-4 rounded-xl border border-[#e3b6b6] bg-[#fff1f1] px-4 py-3 text-sm font-semibold text-[#8a3434]">
+          <p className="mx-6 mb-6 rounded-xl border border-[#e3b6b6] bg-[#fff1f1] px-4 py-3 text-sm font-semibold text-[#8a3434] sm:mx-8">
             {error}
           </p>
         ) : null}
@@ -350,78 +588,83 @@ export function AuthPanel() {
               </p>
             </div>
 
-            {createAccountStep === "email" ? (
-              <label
-                className="mt-5 grid gap-2 font-semibold"
-                htmlFor="create-account-email"
-              >
-                Email
-                <input
-                  autoComplete="email"
-                  className="min-h-12 rounded-xl border border-border bg-background px-4 font-normal"
-                  id="create-account-email"
-                  onChange={(event) => setCreateEmail(event.target.value)}
-                  required
-                  type="email"
-                  value={createEmail}
-                />
-              </label>
-            ) : null}
-
-            {createAccountStep === "password" ? (
-              <div className="mt-5 grid gap-4">
-                <label className="grid gap-2 font-semibold" htmlFor="create-account-password">
-                  Password
-                  <input
-                    autoComplete="new-password"
-                    className="min-h-12 rounded-xl border border-border bg-background px-4 font-normal"
-                    id="create-account-password"
-                    minLength={6}
-                    onChange={(event) => setCreatePassword(event.target.value)}
-                    required
-                    type="password"
-                    value={createPassword}
-                  />
-                </label>
+            <div className="auth-step-panel" key={createAccountStep}>
+              {createAccountStep === "email" ? (
                 <label
-                  className="grid gap-2 font-semibold"
-                  htmlFor="create-account-password-confirmation"
+                  className="mt-5 grid gap-2 font-semibold"
+                  htmlFor="create-account-email"
                 >
-                  Confirm password
+                  Email
                   <input
-                    autoComplete="new-password"
-                    className="min-h-12 rounded-xl border border-border bg-background px-4 font-normal"
-                    id="create-account-password-confirmation"
-                    minLength={6}
-                    onChange={(event) =>
-                      setCreatePasswordConfirmation(event.target.value)
-                    }
+                    autoComplete="email"
+                    autoFocus
+                    className="min-h-12 rounded-xl border border-border bg-background px-4 font-normal transition-colors duration-150 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-background"
+                    id="create-account-email"
+                    onChange={(event) => setCreateEmail(event.target.value)}
                     required
-                    type="password"
-                    value={createPasswordConfirmation}
+                    type="email"
+                    value={createEmail}
                   />
                 </label>
-              </div>
-            ) : null}
+              ) : null}
 
-            {createAccountStep === "name" ? (
-              <label
-                className="mt-5 grid gap-2 font-semibold"
-                htmlFor="create-account-name"
-              >
-                Name
-                <input
-                  autoComplete="name"
-                  className="min-h-12 rounded-xl border border-border bg-background px-4 font-normal"
-                  id="create-account-name"
-                  maxLength={80}
-                  onChange={(event) => setCreateDisplayName(event.target.value)}
-                  required
-                  type="text"
-                  value={createDisplayName}
-                />
-              </label>
-            ) : null}
+              {createAccountStep === "password" ? (
+                <div className="mt-5 grid gap-4">
+                  <label className="grid gap-2 font-semibold" htmlFor="create-account-password">
+                    Password
+                    <input
+                      autoComplete="new-password"
+                      autoFocus
+                      className="min-h-12 rounded-xl border border-border bg-background px-4 font-normal transition-colors duration-150 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-background"
+                      id="create-account-password"
+                      minLength={6}
+                      onChange={(event) => setCreatePassword(event.target.value)}
+                      required
+                      type="password"
+                      value={createPassword}
+                    />
+                  </label>
+                  <label
+                    className="grid gap-2 font-semibold"
+                    htmlFor="create-account-password-confirmation"
+                  >
+                    Confirm password
+                    <input
+                      autoComplete="new-password"
+                      className="min-h-12 rounded-xl border border-border bg-background px-4 font-normal transition-colors duration-150 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-background"
+                      id="create-account-password-confirmation"
+                      minLength={6}
+                      onChange={(event) =>
+                        setCreatePasswordConfirmation(event.target.value)
+                      }
+                      required
+                      type="password"
+                      value={createPasswordConfirmation}
+                    />
+                  </label>
+                </div>
+              ) : null}
+
+              {createAccountStep === "name" ? (
+                <label
+                  className="mt-5 grid gap-2 font-semibold"
+                  htmlFor="create-account-name"
+                >
+                  Name
+                  <input
+                    autoComplete="name"
+                    autoFocus
+                    className="min-h-12 rounded-xl border border-border bg-background px-4 font-normal transition-colors duration-150 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-background"
+                    id="create-account-name"
+                    maxLength={80}
+                    onChange={(event) => setCreateDisplayName(event.target.value)}
+                    required
+                    type="text"
+                    value={createDisplayName}
+                  />
+                </label>
+              ) : null}
+            </div>
 
             {createError ? (
               <p className="mt-4 rounded-xl border border-[#e3b6b6] bg-[#fff1f1] px-4 py-3 text-sm font-semibold text-[#8a3434]">
@@ -431,7 +674,7 @@ export function AuthPanel() {
 
             <div className="mt-6 flex flex-wrap justify-end gap-3">
               <button
-                className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-background px-5 font-semibold text-foreground hover:bg-[#f8f6f0] disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-background px-5 font-semibold text-foreground transition-colors duration-150 hover:bg-[#f8f6f0] disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={isSubmitting}
                 onClick={closeCreateAccount}
                 type="button"
@@ -439,7 +682,7 @@ export function AuthPanel() {
                 Cancel
               </button>
               <button
-                className="inline-flex min-h-11 items-center justify-center rounded-xl bg-accent px-5 font-semibold text-white hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex min-h-11 items-center justify-center rounded-xl bg-accent px-5 font-semibold text-white transition-colors duration-150 hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={isSubmitting}
                 type="submit"
               >

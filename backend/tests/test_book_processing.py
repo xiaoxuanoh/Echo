@@ -10,6 +10,33 @@ from tests.conftest import make_pdf
 from tests.test_uploads import image_bytes
 
 
+def test_ocr_cleanup_removes_isolated_page_numbers() -> None:
+    text = (
+        "第一章\n"
+        "資產組合裝上「安全氣囊」\n"
+        "014\n"
+        "Page 15\n"
+        "- 16 -\n"
+        "第 17 頁"
+    )
+
+    cleaned = DocumentTextProcessingService._remove_isolated_page_number_lines(text)
+
+    assert cleaned == "第一章\n資產組合裝上「安全氣囊」"
+
+
+def test_ocr_cleanup_preserves_inline_numbers() -> None:
+    text = (
+        "這本書就是要告訴你：不！現金存款、住宅物業、債券、014\n"
+        "第14章\n"
+        "2026年市場情況"
+    )
+
+    cleaned = DocumentTextProcessingService._remove_isolated_page_number_lines(text)
+
+    assert cleaned == text
+
+
 def test_processes_all_image_pages_in_order(
     client: TestClient,
     storage_path: Path,

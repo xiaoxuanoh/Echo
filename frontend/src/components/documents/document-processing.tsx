@@ -18,7 +18,7 @@ import type {
 
 
 const documentStatusLabels: Record<DocumentProcessingStatus, string> = {
-  uploaded: "Ready to create listening audio",
+  uploaded: "Preparing your document",
   normalizing_pages: "Preparing the pages",
   inspecting: "Checking the pages",
   extracting_text: "Reading the page text",
@@ -58,9 +58,8 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [creatingListeningAudio, setCreatingListeningAudio] = useState(false);
   const [audioProgress, setAudioProgress] = useState({ completed: 0, total: 0 });
-  const audioStartRequestedRef = useRef(false);
+  const textStartRequestedRef = useRef(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -135,6 +134,37 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
     }
   }
 
+  const startTextPreparation = useCallback(async () => {
+    setActing(true);
+    setError(null);
+    try {
+      await startTextProcessing(documentId);
+      await refresh();
+    } catch (caught) {
+      textStartRequestedRef.current = false;
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Echo could not start reading your pages.",
+      );
+    } finally {
+      setActing(false);
+    }
+  }, [documentId, refresh]);
+
+  useEffect(() => {
+    if (
+      !document ||
+      document.processing_status !== "uploaded" ||
+      textStartRequestedRef.current
+    ) {
+      return;
+    }
+
+    textStartRequestedRef.current = true;
+    void startTextPreparation();
+  }, [document, startTextPreparation]);
+
   const startAudio = useCallback(async () => {
     setActing(true);
     setError(null);
@@ -147,54 +177,10 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
           ? caught.message
           : "Echo could not start creating listening audio.",
       );
-      setCreatingListeningAudio(false);
-      audioStartRequestedRef.current = false;
     } finally {
       setActing(false);
     }
   }, [documentId, refresh]);
-
-  useEffect(() => {
-    if (
-      !creatingListeningAudio ||
-      !document ||
-      document.processing_status !== "text_ready" ||
-      audioStartRequestedRef.current
-    ) {
-      return;
-    }
-
-    audioStartRequestedRef.current = true;
-    void startAudio();
-  }, [document, creatingListeningAudio, startAudio]);
-
-  async function startListeningAudio() {
-    setCreatingListeningAudio(true);
-    setActing(true);
-    setError(null);
-    audioStartRequestedRef.current = false;
-
-    try {
-      if (document?.processing_status === "text_ready") {
-        audioStartRequestedRef.current = true;
-        await prepareDocumentAudio(documentId);
-        await refresh();
-        return;
-      }
-
-      await startTextProcessing(documentId);
-      await refresh();
-    } catch (caught) {
-      setCreatingListeningAudio(false);
-      setError(
-        caught instanceof Error
-          ? caught.message
-          : "Echo could not start creating listening audio.",
-      );
-    } finally {
-      setActing(false);
-    }
-  }
 
   if (loading) {
     return <p className="mt-10 text-lg text-muted">Loading your document...</p>;
@@ -218,15 +204,29 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
   }
 
   const isActive = activeStatuses.has(document.processing_status);
-  const canStartText =
+  const isPreparingText =
     document.processing_status === "uploaded" ||
-    (textProcessingStatuses.has(document.processing_status) && !document.processing_active);
+    textProcessingStatuses.has(document.processing_status);
+  const canResumeText =
+    textProcessingStatuses.has(document.processing_status) && !document.processing_active;
+  const canStartAudio =
+    document.processing_status === "text_ready" ||
+    (document.processing_status === "generating_audio" && !document.processing_active);
+  const listenNowDisabled = acting || !canStartAudio;
   const audioPercent =
     audioProgress.total > 0
       ? Math.round((audioProgress.completed / audioProgress.total) * 100)
       : 0;
+  const textPercent =
+    document.total_pages > 0
+      ? Math.round((document.completed_pages / document.total_pages) * 100)
+      : 0;
   const progressPercent =
-    document.processing_status === "ready" ? 100 : document.processing_status === "generating_audio" ? audioPercent : 0;
+    document.processing_status === "ready"
+      ? 100
+      : document.processing_status === "generating_audio"
+        ? audioPercent
+        : textPercent;
   const progressLabel =
     document.processing_status === "generating_audio"
       ? `${audioProgress.completed} of ${audioProgress.total || "…"} audio parts ready`
@@ -245,14 +245,22 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
             </h1>
             <p className="mt-1 text-muted">{progressLabel}</p>
           </div>
-          {canStartText && (
+          {document.processing_status === "ready" ? (
+            <Link
+              href={`/books/${document.id}/listen`}
+              className="inline-flex min-h-12 items-center rounded-xl bg-accent px-6 py-3 font-semibold text-white shadow-sm transition-colors duration-150 hover:bg-accent-dark"
+            >
+              Listen now
+            </Link>
+          ) : (
             <button
               type="button"
-              disabled={acting}
-              onClick={() => void startListeningAudio()}
-              className="min-h-12 rounded-xl bg-accent px-6 py-3 font-semibold text-white shadow-sm hover:bg-accent-dark disabled:opacity-60"
+              disabled={listenNowDisabled}
+              onClick={() => void startAudio()}
+              className="min-h-12 rounded-xl bg-accent px-6 py-3 font-semibold text-white shadow-sm transition-colors duration-150 hover:bg-accent-dark disabled:cursor-not-allowed disabled:border disabled:border-border disabled:bg-[#edf1f0] disabled:text-muted disabled:shadow-none"
+              aria-describedby={isPreparingText ? "listen-now-waiting" : undefined}
             >
-              {acting ? "Starting audio..." : "Create listening audio"}
+              Listen now
             </button>
           )}
         </div>
@@ -262,13 +270,18 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
             className="h-full rounded-full bg-accent transition-[width]"
             style={{ width: `${progressPercent}%` }}
             role="progressbar"
-            aria-label="Audio preparation progress"
+            aria-label="Document preparation progress"
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={progressPercent}
           />
         </div>
 
+        {isPreparingText && (
+          <p id="listen-now-waiting" className="mt-4 text-sm text-muted" aria-live="polite">
+            Echo is reading your pages first. Listen now will unlock when the text is ready.
+          </p>
+        )}
         {isActive && document.processing_active && (
           <p className="mt-4 text-sm text-muted" aria-live="polite">
             {document.processing_status === "generating_audio"
@@ -276,23 +289,25 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
               : "Echo is working through your pages in order. You can keep this page open to watch the progress."}
           </p>
         )}
-        {textProcessingStatuses.has(document.processing_status) && !document.processing_active && (
-          <p className="mt-2 text-sm text-muted">
-            Preparation appears to have stopped. Continue to resume from the first
-            unfinished page.
-          </p>
-        )}
-        {document.processing_status === "text_ready" && (
-          <div className="mt-4 rounded-xl border border-[#a9c5b3] bg-[#f4faf5] p-4 text-[#376247]">
-            <p>All page text is prepared. You can now create listening audio.</p>
+        {canResumeText && (
+          <div className="mt-4 rounded-xl border border-[#d9b9b4] bg-[#fff3f1] p-4 text-[#783a33]">
+            <p>
+              Preparation appears to have stopped. Resume reading from the first
+              unfinished page.
+            </p>
             <button
               type="button"
               disabled={acting}
-              onClick={() => void startListeningAudio()}
-              className="mt-3 min-h-11 rounded-lg bg-accent px-4 font-semibold text-white hover:bg-accent-dark disabled:opacity-60"
+              onClick={() => void startTextPreparation()}
+              className="mt-3 min-h-11 rounded-lg border border-[#d9b9b4] px-4 font-semibold transition-colors duration-150 hover:bg-white disabled:opacity-60"
             >
-              {acting ? "Starting audio..." : "Create listening audio"}
+              Resume reading pages
             </button>
+          </div>
+        )}
+        {document.processing_status === "text_ready" && (
+          <div className="mt-4 rounded-xl border border-[#a9c5b3] bg-[#f4faf5] p-4 text-[#376247]">
+            <p>All page text is prepared. Select Listen now to create listening audio.</p>
           </div>
         )}
         {document.processing_status === "generating_audio" && !document.processing_active && (
@@ -301,8 +316,8 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
             <button
               type="button"
               disabled={acting}
-              onClick={() => void startListeningAudio()}
-              className="mt-3 min-h-11 rounded-lg border border-[#d9b9b4] px-4 font-semibold hover:bg-white disabled:opacity-60"
+              onClick={() => void startAudio()}
+              className="mt-3 min-h-11 rounded-lg border border-[#d9b9b4] px-4 font-semibold transition-colors duration-150 hover:bg-white disabled:opacity-60"
             >
               {acting ? "Starting audio..." : "Resume audio preparation"}
             </button>
@@ -311,12 +326,6 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
         {document.processing_status === "ready" && (
           <div className="mt-4 rounded-xl border border-[#a9c5b3] bg-[#f4faf5] p-4 text-[#376247]">
             <p>Listening audio is ready.</p>
-            <Link
-              href={`/books/${document.id}/listen`}
-              className="mt-3 inline-flex min-h-11 items-center rounded-lg bg-accent px-4 font-semibold text-white hover:bg-accent-dark"
-            >
-              Listen now
-            </Link>
           </div>
         )}
         {document.error_message && !error && (

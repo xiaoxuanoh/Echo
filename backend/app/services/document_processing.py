@@ -1,4 +1,5 @@
 import logging
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from threading import Lock
@@ -11,6 +12,12 @@ from app.services.ocr import OcrProvider
 
 
 logger = logging.getLogger(__name__)
+
+
+ISOLATED_PAGE_NUMBER_PATTERN = re.compile(
+    r"^(?:[-–—]\s*)?(?:(?:page|p)\.?\s*|頁\s*|第\s*)?\d{1,4}(?:\s*頁)?(?:\s*[-–—])?$",
+    re.IGNORECASE,
+)
 
 
 class LocalDocumentJobRegistry:
@@ -163,7 +170,7 @@ class DocumentTextProcessingService:
                     "no_page_text",
                     "Echo could not find readable text on this page.",
                 )
-            page.extracted_text = result.text
+            page.extracted_text = self._remove_isolated_page_number_lines(result.text)
             page.processing_status = "completed"
             page.error_message = None
         except EchoError as error:
@@ -237,3 +244,13 @@ class DocumentTextProcessingService:
                 status_code=500,
             )
         return page_path
+
+    @staticmethod
+    def _remove_isolated_page_number_lines(text: str) -> str:
+        lines = text.splitlines()
+        cleaned_lines = [
+            line
+            for line in lines
+            if not ISOLATED_PAGE_NUMBER_PATTERN.fullmatch(line.strip())
+        ]
+        return "\n".join(cleaned_lines).strip()

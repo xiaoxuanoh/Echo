@@ -58,16 +58,23 @@ describe("auth panel", () => {
           data: { subscription: { unsubscribe } },
         }),
         signInWithPassword,
+        resetPasswordForEmail: vi.fn(),
         signOut: vi.fn(),
         signUp: vi.fn(),
+        updateUser: vi.fn(),
       },
     } as unknown as ReturnType<typeof getSupabaseBrowserClient>);
 
     render(<AuthPanel />);
 
+    expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Email"), {
       target: { value: "reader@example.com" },
     });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    expect(await screen.findByLabelText("Password")).toBeInTheDocument();
+    expect(screen.getByText("reader@example.com")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Password"), {
       target: { value: "correct-password" },
     });
@@ -109,8 +116,10 @@ describe("auth panel", () => {
           data: { subscription: { unsubscribe } },
         }),
         signInWithPassword: vi.fn(),
+        resetPasswordForEmail: vi.fn(),
         signOut: vi.fn(),
         signUp: vi.fn(),
+        updateUser: vi.fn(),
       },
     } as unknown as ReturnType<typeof getSupabaseBrowserClient>);
 
@@ -133,18 +142,10 @@ describe("auth panel", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("creates an account after collecting email, confirmed password, and name", async () => {
+  it("asks new users to confirm their email before signing in", async () => {
     const signUp = vi.fn().mockResolvedValue({
       data: {
-        session: {
-          user: {
-            email: "new-reader@example.com",
-            id: "new-user-id",
-            user_metadata: {
-              display_name: "New Reader",
-            },
-          },
-        },
+        session: null,
       },
       error: null,
     });
@@ -157,8 +158,10 @@ describe("auth panel", () => {
           data: { subscription: { unsubscribe } },
         }),
         signInWithPassword: vi.fn(),
+        resetPasswordForEmail: vi.fn(),
         signOut: vi.fn(),
         signUp,
+        updateUser: vi.fn(),
       },
     } as unknown as ReturnType<typeof getSupabaseBrowserClient>);
 
@@ -198,9 +201,108 @@ describe("auth panel", () => {
         },
       });
     });
-    expect(await screen.findByText("User information")).toBeInTheDocument();
-    expect(screen.getByText("Welcome, New Reader.")).toBeInTheDocument();
-    expect(screen.getByText("New Reader")).toBeInTheDocument();
+    expect(
+      await screen.findByText(/We sent a confirmation link to/),
+    ).toBeInTheDocument();
     expect(screen.getByText("new-reader@example.com")).toBeInTheDocument();
+    expect(screen.getByLabelText("Email")).toHaveValue("new-reader@example.com");
+    expect(screen.queryByText("User information")).not.toBeInTheDocument();
+  });
+
+  it("sends a password reset email from the password step", async () => {
+    const resetPasswordForEmail = vi.fn().mockResolvedValue({
+      data: {},
+      error: null,
+    });
+    const unsubscribe = vi.fn();
+
+    getSupabaseBrowserClientMock.mockReturnValue({
+      auth: {
+        getSession: vi.fn().mockResolvedValue({ data: { session: null } }),
+        onAuthStateChange: vi.fn().mockReturnValue({
+          data: { subscription: { unsubscribe } },
+        }),
+        signInWithPassword: vi.fn(),
+        resetPasswordForEmail,
+        signOut: vi.fn(),
+        signUp: vi.fn(),
+        updateUser: vi.fn(),
+      },
+    } as unknown as ReturnType<typeof getSupabaseBrowserClient>);
+
+    render(<AuthPanel />);
+
+    fireEvent.change(screen.getByLabelText("Email"), {
+      target: { value: "reader@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Forgot password?" }));
+
+    await waitFor(() => {
+      expect(resetPasswordForEmail).toHaveBeenCalledWith("reader@example.com", {
+        redirectTo: "http://localhost:3000/profile",
+      });
+    });
+    expect(
+      await screen.findByText(/We sent a password reset link to/),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("reader@example.com")).toHaveLength(2);
+  });
+
+  it("lets users choose a new password after a recovery link", async () => {
+    const updateUser = vi.fn().mockResolvedValue({
+      data: {
+        user: {
+          email: "reader@example.com",
+          id: "user-id",
+        },
+      },
+      error: null,
+    });
+    const unsubscribe = vi.fn();
+    const session = {
+      user: {
+        email: "reader@example.com",
+        id: "user-id",
+      },
+    };
+
+    getSupabaseBrowserClientMock.mockReturnValue({
+      auth: {
+        getSession: vi.fn().mockResolvedValue({ data: { session } }),
+        onAuthStateChange: vi.fn((callback) => {
+          callback("PASSWORD_RECOVERY", session);
+
+          return {
+            data: { subscription: { unsubscribe } },
+          };
+        }),
+        signInWithPassword: vi.fn(),
+        resetPasswordForEmail: vi.fn(),
+        signOut: vi.fn(),
+        signUp: vi.fn(),
+        updateUser,
+      },
+    } as unknown as ReturnType<typeof getSupabaseBrowserClient>);
+
+    render(<AuthPanel />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Choose a new password" }),
+    ).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("New password"), {
+      target: { value: "new-password" },
+    });
+    fireEvent.change(screen.getByLabelText("Confirm new password"), {
+      target: { value: "new-password" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Update password" }));
+
+    await waitFor(() => {
+      expect(updateUser).toHaveBeenCalledWith({
+        password: "new-password",
+      });
+    });
+    expect(await screen.findByText("Your password has been updated.")).toBeInTheDocument();
   });
 });

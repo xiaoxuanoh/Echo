@@ -1,6 +1,6 @@
 "use client";
 
-import type { Session } from "@supabase/supabase-js";
+import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
 import { useEffect, useMemo, useState } from "react";
 
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
@@ -9,6 +9,7 @@ export function useAuthSession() {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
   const [session, setSession] = useState<Session | null>(null);
   const [isLoadingSession, setIsLoadingSession] = useState(Boolean(supabase));
+  const [authEvent, setAuthEvent] = useState<AuthChangeEvent | null>(null);
 
   useEffect(() => {
     if (!supabase) {
@@ -26,7 +27,8 @@ export function useAuthSession() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      setAuthEvent(event);
       setSession(nextSession);
       setIsLoadingSession(false);
     });
@@ -41,6 +43,7 @@ export function useAuthSession() {
     isConfigured: Boolean(supabase),
     isLoadingSession,
     isSignedIn: Boolean(session),
+    authEvent,
     session,
     setSession,
     supabase,
