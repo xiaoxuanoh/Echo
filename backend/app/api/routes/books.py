@@ -47,7 +47,10 @@ from app.schemas.documents import (
     PdfPageResult,
     PdfUploadResult,
 )
-from app.services.document_metadata import LocalDocumentMetadataService
+from app.services.document_metadata import (
+    LocalDocumentMetadataService,
+    SupabaseDocumentMetadataService,
+)
 from app.services.audio_processing import DocumentAudioProcessingService
 from app.services.document_processing import (
     DocumentTextProcessingService,
@@ -153,12 +156,24 @@ def _authorize_document(book: DocumentRecord, user_id: UUID | None) -> None:
         )
 
 
+def _metadata_service(
+    settings: object,
+) -> LocalDocumentMetadataService | SupabaseDocumentMetadataService:
+    if _supabase_auth_enabled(settings):
+        return SupabaseDocumentMetadataService(
+            supabase_url=getattr(settings, "supabase_url"),
+            service_role_key=getattr(settings, "supabase_service_role_key"),
+        )
+    return LocalDocumentMetadataService()
+
+
 def _load_document_for_user(
     storage_root: Path,
     book_id: UUID,
     user_id: UUID | None,
+    metadata: LocalDocumentMetadataService | SupabaseDocumentMetadataService,
 ) -> DocumentRecord:
-    book = LocalDocumentMetadataService().load(storage_root / str(book_id))
+    book = metadata.load(storage_root / str(book_id))
     _authorize_document(book, user_id)
     return book
 
@@ -229,6 +244,7 @@ def _processing_service(request: Request) -> DocumentTextProcessingService:
     return DocumentTextProcessingService(
         storage_root=settings.local_storage_path,
         ocr_provider=create_ocr_provider(settings),
+        metadata=_metadata_service(settings),
     )
 
 
@@ -244,6 +260,7 @@ def _audio_processing_service(request: Request) -> DocumentAudioProcessingServic
             settings,
             voice_override=voice,
         ),
+        metadata=_metadata_service(settings),
     )
 
 
@@ -407,9 +424,9 @@ def _library_folders(
 def _folder_recordings(
     storage_root: Path,
     folder_id: UUID,
+    metadata: LocalDocumentMetadataService | SupabaseDocumentMetadataService,
     user_id: UUID | None = None,
 ) -> list[DocumentRecord]:
-    metadata = LocalDocumentMetadataService()
     books = _documents_for_user(metadata.list_documents(storage_root), user_id)
     folders = _library_folders(books, LocalDocumentJobRegistry())
     folder = next((candidate for candidate in folders if candidate.id == folder_id), None)
@@ -426,10 +443,11 @@ def _folder_recordings(
 def _target_library_folder(
     storage_root: Path,
     folder_id: UUID,
+    metadata: LocalDocumentMetadataService | SupabaseDocumentMetadataService,
     user_id: UUID | None = None,
 ) -> DocumentLibraryFolderResult:
     books = _documents_for_user(
-        LocalDocumentMetadataService().list_documents(storage_root),
+        metadata.list_documents(storage_root),
         user_id,
     )
     folders = _library_folders(books, LocalDocumentJobRegistry())
@@ -686,8 +704,14 @@ def preview_page_text(
 ) -> PageTextPreviewResult:
     settings = request.app.state.settings
     user_id = _request_user_id(request)
+    metadata = _metadata_service(settings)
     book_directory = settings.local_storage_path / str(book_id)
-    book = _load_document_for_user(settings.local_storage_path, book_id, user_id)
+    book = _load_document_for_user(
+        settings.local_storage_path,
+        book_id,
+        user_id,
+        metadata,
+    )
     page = next(
         (candidate for candidate in book.pages if candidate.page_number == page_number),
         None,
@@ -724,8 +748,14 @@ def get_prepared_page_image(
 ) -> FileResponse:
     settings = request.app.state.settings
     user_id = _request_user_id(request)
+    metadata = _metadata_service(settings)
     book_directory = settings.local_storage_path / str(book_id)
-    book = _load_document_for_user(settings.local_storage_path, book_id, user_id)
+    book = _load_document_for_user(
+        settings.local_storage_path,
+        book_id,
+        user_id,
+        metadata,
+    )
     page = next(
         (candidate for candidate in book.pages if candidate.page_number == page_number),
         None,
@@ -760,8 +790,13 @@ def update_prepared_page_crop(
     settings = request.app.state.settings
     user_id = _request_user_id(request)
     book_directory = settings.local_storage_path / str(book_id)
-    metadata = LocalDocumentMetadataService()
-    book = _load_document_for_user(settings.local_storage_path, book_id, user_id)
+    metadata = _metadata_service(settings)
+    book = _load_document_for_user(
+        settings.local_storage_path,
+        book_id,
+        user_id,
+        metadata,
+    )
     page = next(
         (candidate for candidate in book.pages if candidate.page_number == page_number),
         None,
@@ -867,11 +902,17 @@ async def upload_pdf(
 ) -> PdfUploadResult:
     settings = request.app.state.settings
     user_id = _request_user_id(request)
+    metadata_service = _metadata_service(settings)
     book_id = uuid4()
     language, tts_voice = _language_fields(target_language)
     storage = LocalStorageService(settings.local_storage_path)
     target_folder = (
-        _target_library_folder(settings.local_storage_path, library_book_id, user_id)
+        _target_library_folder(
+            settings.local_storage_path,
+            library_book_id,
+            metadata_service,
+            user_id,
+        )
         if library_book_id is not None
         else None
     )
@@ -929,7 +970,7 @@ async def upload_pdf(
                 )
             )
 
-        metadata = DocumentRecord(
+        document = DocumentRecord(
             id=book_id,
             library_book_id=target_folder.id if target_folder else book_id,
             user_id=user_id,
@@ -954,7 +995,7 @@ async def upload_pdf(
             created_at=now,
             updated_at=now,
         )
-        LocalDocumentMetadataService().save(book_directory, metadata)
+        metadata_service.save(book_directory, document)
     except Exception:
         shutil.rmtree(book_directory, ignore_errors=True)
         raise
@@ -998,6 +1039,7 @@ async def upload_images(
 ) -> ImageUploadResult:
     settings = request.app.state.settings
     user_id = _request_user_id(request)
+    metadata_service = _metadata_service(settings)
     language, tts_voice = _language_fields(target_language)
     if not files:
         raise EchoError("no_images", "Please add at least one page image.")
@@ -1033,7 +1075,12 @@ async def upload_images(
     book_id = uuid4()
     storage = LocalStorageService(settings.local_storage_path)
     target_folder = (
-        _target_library_folder(settings.local_storage_path, library_book_id, user_id)
+        _target_library_folder(
+            settings.local_storage_path,
+            library_book_id,
+            metadata_service,
+            user_id,
+        )
         if library_book_id is not None
         else None
     )
@@ -1102,7 +1149,7 @@ async def upload_images(
                 )
             )
 
-        metadata = DocumentRecord(
+        document = DocumentRecord(
             id=book_id,
             library_book_id=target_folder.id if target_folder else book_id,
             user_id=user_id,
@@ -1129,7 +1176,7 @@ async def upload_images(
             created_at=now,
             updated_at=now,
         )
-        LocalDocumentMetadataService().save(book_directory, metadata)
+        metadata_service.save(book_directory, document)
     except Exception:
         shutil.rmtree(book_directory, ignore_errors=True)
         raise
@@ -1148,9 +1195,10 @@ async def upload_images(
 def list_documents(request: Request) -> DocumentLibraryResult:
     settings = request.app.state.settings
     user_id = _request_user_id(request)
+    metadata = _metadata_service(settings)
     registry: LocalDocumentJobRegistry = request.app.state.document_job_registry
     books = _documents_for_user(
-        LocalDocumentMetadataService().list_documents(settings.local_storage_path),
+        metadata.list_documents(settings.local_storage_path),
         user_id,
     )
     return DocumentLibraryResult(folders=_library_folders(books, registry))
@@ -1164,12 +1212,18 @@ def assign_recording_to_folder(
 ) -> DocumentMutationResult:
     settings = request.app.state.settings
     user_id = _request_user_id(request)
-    metadata = LocalDocumentMetadataService()
+    metadata = _metadata_service(settings)
     book_directory = settings.local_storage_path / str(book_id)
-    recording = _load_document_for_user(settings.local_storage_path, book_id, user_id)
+    recording = _load_document_for_user(
+        settings.local_storage_path,
+        book_id,
+        user_id,
+        metadata,
+    )
     target_folder = _target_library_folder(
         settings.local_storage_path,
         payload.folder_id,
+        metadata,
         user_id,
     )
 
@@ -1200,9 +1254,14 @@ def rename_book_folder(
 
     settings = request.app.state.settings
     user_id = _request_user_id(request)
-    metadata = LocalDocumentMetadataService()
+    metadata = _metadata_service(settings)
     now = datetime.now(UTC)
-    for recording in _folder_recordings(settings.local_storage_path, folder_id, user_id):
+    for recording in _folder_recordings(
+        settings.local_storage_path,
+        folder_id,
+        metadata,
+        user_id,
+    ):
         recording.title = title
         recording.library_document_id = folder_id
         recording.updated_at = now
@@ -1215,7 +1274,14 @@ def rename_book_folder(
 def delete_book_folder(request: Request, folder_id: UUID) -> DocumentMutationResult:
     settings = request.app.state.settings
     user_id = _request_user_id(request)
-    for recording in _folder_recordings(settings.local_storage_path, folder_id, user_id):
+    metadata = _metadata_service(settings)
+    for recording in _folder_recordings(
+        settings.local_storage_path,
+        folder_id,
+        metadata,
+        user_id,
+    ):
+        metadata.delete(settings.local_storage_path / str(recording.id))
         shutil.rmtree(settings.local_storage_path / str(recording.id), ignore_errors=True)
 
     return DocumentMutationResult(message="Echo removed this local upload.")
@@ -1225,8 +1291,9 @@ def delete_book_folder(request: Request, folder_id: UUID) -> DocumentMutationRes
 def download_folder_audio(request: Request, folder_id: UUID) -> Response:
     settings = request.app.state.settings
     user_id = _request_user_id(request)
+    metadata = _metadata_service(settings)
     recordings = sorted(
-        _folder_recordings(settings.local_storage_path, folder_id, user_id),
+        _folder_recordings(settings.local_storage_path, folder_id, metadata, user_id),
         key=lambda recording: recording.created_at,
     )
     audio_paths = [
@@ -1238,7 +1305,12 @@ def download_folder_audio(request: Request, folder_id: UUID) -> Response:
         )
     ]
 
-    folder = _target_library_folder(settings.local_storage_path, folder_id, user_id)
+    folder = _target_library_folder(
+        settings.local_storage_path,
+        folder_id,
+        metadata,
+        user_id,
+    )
     combined_audio = _combine_audio_with_ffmpeg(
         audio_paths,
         ffmpeg_path=settings.ffmpeg_path,
@@ -1257,8 +1329,10 @@ def download_folder_audio(request: Request, folder_id: UUID) -> Response:
 def delete_recording(request: Request, book_id: UUID) -> DocumentMutationResult:
     settings = request.app.state.settings
     user_id = _request_user_id(request)
+    metadata = _metadata_service(settings)
     book_directory = settings.local_storage_path / str(book_id)
-    _load_document_for_user(settings.local_storage_path, book_id, user_id)
+    _load_document_for_user(settings.local_storage_path, book_id, user_id, metadata)
+    metadata.delete(book_directory)
     shutil.rmtree(book_directory, ignore_errors=True)
     return DocumentMutationResult(message="Echo removed this recording.")
 
@@ -1279,9 +1353,14 @@ def rename_recording(
 
     settings = request.app.state.settings
     user_id = _request_user_id(request)
-    metadata = LocalDocumentMetadataService()
+    metadata = _metadata_service(settings)
     book_directory = settings.local_storage_path / str(book_id)
-    recording = _load_document_for_user(settings.local_storage_path, book_id, user_id)
+    recording = _load_document_for_user(
+        settings.local_storage_path,
+        book_id,
+        user_id,
+        metadata,
+    )
     recording.recording_title = title
     recording.updated_at = datetime.now(UTC)
     metadata.save(book_directory, recording)
@@ -1292,7 +1371,8 @@ def rename_recording(
 def get_book(request: Request, book_id: UUID) -> DocumentDetailResult:
     settings = request.app.state.settings
     user_id = _request_user_id(request)
-    book = _load_document_for_user(settings.local_storage_path, book_id, user_id)
+    metadata = _metadata_service(settings)
+    book = _load_document_for_user(settings.local_storage_path, book_id, user_id, metadata)
     registry: LocalDocumentJobRegistry = request.app.state.document_job_registry
     return _book_result(book, processing_active=registry.is_active(book_id))
 
@@ -1301,7 +1381,8 @@ def get_book(request: Request, book_id: UUID) -> DocumentDetailResult:
 def get_book_audio(request: Request, book_id: UUID) -> DocumentAudioResult:
     settings = request.app.state.settings
     user_id = _request_user_id(request)
-    book = _load_document_for_user(settings.local_storage_path, book_id, user_id)
+    metadata = _metadata_service(settings)
+    book = _load_document_for_user(settings.local_storage_path, book_id, user_id, metadata)
     registry: LocalDocumentJobRegistry = request.app.state.document_job_registry
     return _audio_result(book, processing_active=registry.is_active(book_id))
 
@@ -1318,7 +1399,8 @@ def prepare_book_audio(
 ) -> AudioProcessingAccepted:
     settings = request.app.state.settings
     user_id = _request_user_id(request)
-    _load_document_for_user(settings.local_storage_path, book_id, user_id)
+    metadata = _metadata_service(settings)
+    _load_document_for_user(settings.local_storage_path, book_id, user_id, metadata)
     registry: LocalDocumentJobRegistry = request.app.state.document_job_registry
     if not registry.start(book_id):
         raise EchoError(
@@ -1349,8 +1431,9 @@ def get_audio_file(
 ) -> FileResponse:
     settings = request.app.state.settings
     user_id = _request_user_id(request)
+    metadata = _metadata_service(settings)
     book_directory = settings.local_storage_path / str(book_id)
-    book = _load_document_for_user(settings.local_storage_path, book_id, user_id)
+    book = _load_document_for_user(settings.local_storage_path, book_id, user_id, metadata)
     segment = next(
         (
             candidate
@@ -1388,8 +1471,9 @@ def get_audio_file(
 def download_recording_audio(request: Request, book_id: UUID) -> Response:
     settings = request.app.state.settings
     user_id = _request_user_id(request)
+    metadata = _metadata_service(settings)
     book_directory = settings.local_storage_path / str(book_id)
-    book = _load_document_for_user(settings.local_storage_path, book_id, user_id)
+    book = _load_document_for_user(settings.local_storage_path, book_id, user_id, metadata)
     if not _ready_audio_segments(book):
         raise EchoError(
             "audio_not_found",
@@ -1426,7 +1510,8 @@ def process_book_text(
 ) -> DocumentProcessingAccepted:
     settings = request.app.state.settings
     user_id = _request_user_id(request)
-    _load_document_for_user(settings.local_storage_path, book_id, user_id)
+    metadata = _metadata_service(settings)
+    _load_document_for_user(settings.local_storage_path, book_id, user_id, metadata)
     registry: LocalDocumentJobRegistry = request.app.state.document_job_registry
     if not registry.start(book_id):
         raise EchoError(
@@ -1462,7 +1547,8 @@ def retry_page_text(
 ) -> DocumentProcessingAccepted:
     settings = request.app.state.settings
     user_id = _request_user_id(request)
-    _load_document_for_user(settings.local_storage_path, book_id, user_id)
+    metadata = _metadata_service(settings)
+    _load_document_for_user(settings.local_storage_path, book_id, user_id, metadata)
     registry: LocalDocumentJobRegistry = request.app.state.document_job_registry
     if not registry.start(book_id):
         raise EchoError(
