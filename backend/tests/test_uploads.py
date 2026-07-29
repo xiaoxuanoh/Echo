@@ -283,6 +283,7 @@ def test_supabase_storage_uploads_serves_and_deletes_page_images(
     assert fake_storage.deleted_prefixes == [
         ("documents-source", f"{user_id}/{book_id}"),
         ("documents-pages", f"{user_id}/{book_id}"),
+        ("documents-audio", f"{user_id}/{book_id}"),
     ]
 
 

@@ -28,6 +28,11 @@ class DocumentAudioProcessingService:
         tts_provider: TtsProvider | None = None,
         tts_provider_factory: Callable[[str | None], TtsProvider] | None = None,
         metadata: LocalDocumentMetadataService | None = None,
+        store_audio_file: Callable[
+            [DocumentRecord, AudioSegmentRecord, Path],
+            None,
+        ]
+        | None = None,
     ) -> None:
         self.storage_root = storage_root
         self.segmenter = TextSegmentationService(
@@ -39,6 +44,7 @@ class DocumentAudioProcessingService:
         self.tts_provider = tts_provider or MockTtsProvider()
         self.tts_provider_factory = tts_provider_factory
         self.metadata = metadata or LocalDocumentMetadataService()
+        self.store_audio_file = store_audio_file
 
     def document_directory(self, document_id: UUID) -> Path:
         return self.storage_root / str(document_id)
@@ -132,11 +138,11 @@ class DocumentAudioProcessingService:
                     f"segment-{segment.segment_number:04d}."
                     f"{tts_provider.audio_file_extension}"
                 )
-                duration = tts_provider.synthesize(
-                    segment.source_text,
-                    audio_directory / filename,
-                )
+                audio_path = audio_directory / filename
+                duration = tts_provider.synthesize(segment.source_text, audio_path)
                 segment.audio_storage_path = f"audio/{filename}"
+                if self.store_audio_file is not None:
+                    self.store_audio_file(document, segment, audio_path)
                 segment.duration_seconds = duration
                 segment.processing_status = "completed"
             except Exception:

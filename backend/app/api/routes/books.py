@@ -268,6 +268,7 @@ def _delete_document_files(
     prefix = _storage_prefix(book, user_id=user_id)
     storage.delete_prefix(bucket=settings.supabase_storage_bucket_books, prefix=prefix)
     storage.delete_prefix(bucket=settings.supabase_storage_bucket_pages, prefix=prefix)
+    storage.delete_prefix(bucket=settings.supabase_storage_bucket_audio, prefix=prefix)
 
 
 def _load_document_for_user(
@@ -366,7 +367,10 @@ def _processing_service(
     )
 
 
-def _audio_processing_service(request: Request) -> DocumentAudioProcessingService:
+def _audio_processing_service(
+    request: Request,
+    user_id: UUID | None = None,
+) -> DocumentAudioProcessingService:
     settings = request.app.state.settings
     return DocumentAudioProcessingService(
         storage_root=settings.local_storage_path,
@@ -379,6 +383,23 @@ def _audio_processing_service(request: Request) -> DocumentAudioProcessingServic
             voice_override=voice,
         ),
         metadata=_metadata_service(settings),
+        store_audio_file=(
+            lambda document, segment, source: _store_document_file(
+                settings,
+                document,
+                user_id=user_id,
+                bucket=settings.supabase_storage_bucket_audio,
+                relative_path=segment.audio_storage_path,
+                source=source,
+                content_type=(
+                    "audio/mpeg"
+                    if source.suffix.lower() == ".mp3"
+                    else "audio/wav"
+                ),
+            )
+            if _supabase_storage_enabled(settings, user_id)
+            else None
+        ),
     )
 
 
@@ -590,6 +611,8 @@ def _ready_audio_segments(book: DocumentRecord) -> list[AudioSegmentRecord]:
 def _write_recording_audio(
     zip_file: zipfile.ZipFile,
     *,
+    settings: object,
+    user_id: UUID | None,
     book_directory: Path,
     book: DocumentRecord,
     archive_directory: str | None = None,
@@ -604,6 +627,14 @@ def _write_recording_audio(
                 "The audio file path is invalid.",
                 status_code=500,
             )
+        _download_document_file(
+            settings,
+            book,
+            user_id=user_id,
+            bucket=settings.supabase_storage_bucket_audio,
+            relative_path=segment.audio_storage_path,
+            destination=audio_path,
+        )
         if not audio_path.exists():
             raise EchoError(
                 "audio_file_missing",
@@ -619,6 +650,8 @@ def _write_recording_audio(
 
 def _recording_audio_paths(
     *,
+    settings: object,
+    user_id: UUID | None,
     book_directory: Path,
     book: DocumentRecord,
 ) -> list[Path]:
@@ -632,6 +665,14 @@ def _recording_audio_paths(
                 "The audio file path is invalid.",
                 status_code=500,
             )
+        _download_document_file(
+            settings,
+            book,
+            user_id=user_id,
+            bucket=settings.supabase_storage_bucket_audio,
+            relative_path=segment.audio_storage_path,
+            destination=audio_path,
+        )
         if not audio_path.exists():
             raise EchoError(
                 "audio_file_missing",
@@ -1508,6 +1549,8 @@ def download_folder_audio(request: Request, folder_id: UUID) -> Response:
         audio_path
         for recording in recordings
         for audio_path in _recording_audio_paths(
+            settings=settings,
+            user_id=user_id,
             book_directory=settings.local_storage_path / str(recording.id),
             book=recording,
         )
@@ -1618,7 +1661,7 @@ def prepare_book_audio(
             status_code=409,
         )
     try:
-        service = _audio_processing_service(request)
+        service = _audio_processing_service(request, user_id)
         book = service.prepare_audio_job(book_id)
     except Exception:
         registry.finish(book_id)
@@ -1666,6 +1709,14 @@ def get_audio_file(
             "The audio file path is invalid.",
             status_code=500,
         )
+    _download_document_file(
+        settings,
+        book,
+        user_id=user_id,
+        bucket=settings.supabase_storage_bucket_audio,
+        relative_path=segment.audio_storage_path,
+        destination=audio_path,
+    )
     if not audio_path.exists():
         raise EchoError(
             "audio_file_missing",
@@ -1692,7 +1743,13 @@ def download_recording_audio(request: Request, book_id: UUID) -> Response:
 
     archive = BytesIO()
     with zipfile.ZipFile(archive, mode="w", compression=zipfile.ZIP_DEFLATED) as zip_file:
-        _write_recording_audio(zip_file, book_directory=book_directory, book=book)
+        _write_recording_audio(
+            zip_file,
+            settings=settings,
+            user_id=user_id,
+            book_directory=book_directory,
+            book=book,
+        )
 
     filename = _download_filename(
         book.recording_title or book.original_filename or book.title,

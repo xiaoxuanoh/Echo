@@ -2,6 +2,8 @@ from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
 import subprocess
+import shutil
+from uuid import UUID
 from uuid import uuid4
 from zipfile import ZipFile
 
@@ -314,6 +316,89 @@ def test_returns_mock_audio_file(client: TestClient) -> None:
     assert response.content.startswith(b"RIFF")
 
 
+def test_supabase_storage_audio_uploads_serves_downloads_and_deletes(
+    storage_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user_id = UUID("88888888-8888-4888-8888-888888888888")
+    fake_storage = FakeSupabaseStorage()
+    settings = Settings(
+        _env_file=None,
+        local_storage_path=storage_path,
+        supabase_url="https://example.supabase.co",
+        supabase_service_role_key="secret",
+        supabase_storage_bucket_books="documents-source",
+        supabase_storage_bucket_pages="documents-pages",
+        supabase_storage_bucket_audio="documents-audio",
+        max_pdf_size_mb=1,
+    )
+    monkeypatch.setattr(
+        "app.api.routes.books._verify_supabase_user_id",
+        lambda _, token: user_id,
+    )
+    monkeypatch.setattr(
+        "app.api.routes.books._metadata_service",
+        lambda _: LocalDocumentMetadataService(),
+    )
+    monkeypatch.setattr(
+        "app.api.routes.books._file_storage_service",
+        lambda _: fake_storage,
+    )
+
+    with TestClient(create_app(settings)) as authed_client:
+        upload = authed_client.post(
+            "/api/books/pdf",
+            headers={"Authorization": "Bearer token"},
+            files={
+                "file": (
+                    "digital.pdf",
+                    make_pdf(["Playable stored audio."]),
+                    "application/pdf",
+                )
+            },
+        ).json()
+        authed_client.post(
+            f"/api/books/{upload['book_id']}/process-text",
+            headers={"Authorization": "Bearer token"},
+        )
+        authed_client.post(
+            f"/api/books/{upload['book_id']}/prepare-audio",
+            headers={"Authorization": "Bearer token"},
+        )
+        local_audio = (
+            storage_path
+            / upload["book_id"]
+            / "audio"
+            / "segment-0001.wav"
+        )
+        original_audio = local_audio.read_bytes()
+        local_audio.unlink()
+
+        playback = authed_client.get(
+            f"/api/books/{upload['book_id']}/audio/1/file",
+            headers={"Authorization": "Bearer token"},
+        )
+        local_audio.unlink()
+        download = authed_client.get(
+            f"/api/books/{upload['book_id']}/audio/download",
+            headers={"Authorization": "Bearer token"},
+        )
+        delete = authed_client.delete(
+            f"/api/books/{upload['book_id']}",
+            headers={"Authorization": "Bearer token"},
+        )
+
+    audio_key = ("documents-audio", f"{user_id}/{upload['book_id']}/audio/segment-0001.wav")
+    assert fake_storage.objects[audio_key] == original_audio
+    assert playback.status_code == 200
+    assert playback.content == original_audio
+    assert download.status_code == 200
+    with ZipFile(BytesIO(download.content)) as archive:
+        assert archive.read("part-001.wav") == original_audio
+    assert delete.status_code == 200
+    assert ("documents-audio", f"{user_id}/{upload['book_id']}") in fake_storage.deleted_prefixes
+
+
 def test_downloads_ready_recording_audio_as_zip(client: TestClient) -> None:
     upload = client.post(
         "/api/books/pdf",
@@ -422,6 +507,96 @@ def test_downloads_ready_folder_audio_as_one_mp3_file(
     ]
 
 
+def test_supabase_storage_combined_audio_download_fetches_segments(
+    storage_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user_id = UUID("99999999-9999-4999-8999-999999999999")
+    fake_storage = FakeSupabaseStorage()
+    settings = Settings(
+        _env_file=None,
+        local_storage_path=storage_path,
+        supabase_url="https://example.supabase.co",
+        supabase_service_role_key="secret",
+        supabase_storage_bucket_books="documents-source",
+        supabase_storage_bucket_pages="documents-pages",
+        supabase_storage_bucket_audio="documents-audio",
+        max_pdf_size_mb=1,
+    )
+    ffmpeg_input_lists: list[str] = []
+
+    def fake_run(
+        command: list[str],
+        *,
+        check: bool,
+        capture_output: bool,
+        text: bool,
+    ) -> subprocess.CompletedProcess[str]:
+        del check, capture_output, text
+        ffmpeg_input_lists.append(Path(command[10]).read_text(encoding="utf-8"))
+        Path(command[-1]).write_bytes(b"ID3 stored combined audio")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr("app.api.routes.books.subprocess.run", fake_run)
+    monkeypatch.setattr(
+        "app.api.routes.books._verify_supabase_user_id",
+        lambda _, token: user_id,
+    )
+    monkeypatch.setattr(
+        "app.api.routes.books._metadata_service",
+        lambda _: LocalDocumentMetadataService(),
+    )
+    monkeypatch.setattr(
+        "app.api.routes.books._file_storage_service",
+        lambda _: fake_storage,
+    )
+
+    with TestClient(create_app(settings)) as authed_client:
+        first = authed_client.post(
+            "/api/books/pdf",
+            headers={"Authorization": "Bearer token"},
+            files={
+                "file": (
+                    "chapter-one.pdf",
+                    make_pdf(["First stored audio."]),
+                    "application/pdf",
+                )
+            },
+        ).json()
+        second = authed_client.post(
+            "/api/books/pdf",
+            headers={"Authorization": "Bearer token"},
+            data={"library_book_id": first["book_id"]},
+            files={
+                "file": (
+                    "chapter-two.pdf",
+                    make_pdf(["Second stored audio."]),
+                    "application/pdf",
+                )
+            },
+        ).json()
+        for upload in (first, second):
+            authed_client.post(
+                f"/api/books/{upload['book_id']}/process-text",
+                headers={"Authorization": "Bearer token"},
+            )
+            authed_client.post(
+                f"/api/books/{upload['book_id']}/prepare-audio",
+                headers={"Authorization": "Bearer token"},
+            )
+            shutil.rmtree(storage_path / upload["book_id"] / "audio")
+
+        response = authed_client.get(
+            f"/api/books/folders/{first['book_id']}/audio/download",
+            headers={"Authorization": "Bearer token"},
+        )
+
+    assert response.status_code == 200
+    assert response.content == b"ID3 stored combined audio"
+    assert first["book_id"] in ffmpeg_input_lists[0]
+    assert second["book_id"] in ffmpeg_input_lists[0]
+
+
 def test_resolves_homebrew_ffmpeg_when_server_path_is_sparse(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -456,3 +631,37 @@ def test_rejects_audio_before_text_is_ready(client: TestClient) -> None:
 
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "book_text_not_ready"
+
+
+class FakeSupabaseStorage:
+    def __init__(self) -> None:
+        self.objects: dict[tuple[str, str], bytes] = {}
+        self.deleted_prefixes: list[tuple[str, str]] = []
+
+    def upload_file(
+        self,
+        *,
+        bucket: str,
+        object_path: str,
+        source: Path,
+        content_type: str,
+    ) -> None:
+        del content_type
+        self.objects[(bucket, object_path)] = source.read_bytes()
+
+    def read_file(self, *, bucket: str, object_path: str) -> bytes:
+        return self.objects[(bucket, object_path)]
+
+    def download_file(
+        self,
+        *,
+        bucket: str,
+        object_path: str,
+        destination: Path,
+    ) -> Path:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(self.objects[(bucket, object_path)])
+        return destination
+
+    def delete_prefix(self, *, bucket: str, prefix: str) -> None:
+        self.deleted_prefixes.append((bucket, prefix))
