@@ -1,10 +1,18 @@
 from datetime import UTC, datetime
 from pathlib import Path
+from uuid import UUID
 
+import pytest
 from fastapi.testclient import TestClient
 
+from app.core.config import Settings
+from app.main import create_app
 from app.services.document_metadata import LocalDocumentMetadataService
 from tests.conftest import make_pdf
+
+
+USER_A = UUID("11111111-1111-4111-8111-111111111111")
+USER_B = UUID("22222222-2222-4222-8222-222222222222")
 
 
 def test_lists_empty_local_book_library(client: TestClient) -> None:
@@ -12,6 +20,64 @@ def test_lists_empty_local_book_library(client: TestClient) -> None:
 
     assert response.status_code == 200
     assert response.json() == {"folders": []}
+
+
+def test_supabase_auth_filters_library_by_user(
+    storage_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        local_storage_path=storage_path,
+        supabase_url="https://example.supabase.co",
+        supabase_service_role_key="secret",
+    )
+    users_by_token = {"token-a": USER_A, "token-b": USER_B}
+    monkeypatch.setattr(
+        "app.api.routes.books._verify_supabase_user_id",
+        lambda _, token: users_by_token[token],
+    )
+
+    with TestClient(create_app(settings)) as authed_client:
+        first = authed_client.post(
+            "/api/books/pdf",
+            headers={"Authorization": "Bearer token-a"},
+            files={"file": ("first.pdf", make_pdf(["First text."]), "application/pdf")},
+        ).json()
+        second = authed_client.post(
+            "/api/books/pdf",
+            headers={"Authorization": "Bearer token-b"},
+            files={"file": ("second.pdf", make_pdf(["Second text."]), "application/pdf")},
+        ).json()
+
+        response = authed_client.get(
+            "/api/books",
+            headers={"Authorization": "Bearer token-a"},
+        )
+        blocked = authed_client.get(
+            f"/api/books/{second['book_id']}",
+            headers={"Authorization": "Bearer token-a"},
+        )
+
+    assert response.status_code == 200
+    folders = response.json()["folders"]
+    assert [folder["id"] for folder in folders] == [first["book_id"]]
+    assert blocked.status_code == 404
+
+
+def test_supabase_auth_requires_token(storage_path: Path) -> None:
+    settings = Settings(
+        _env_file=None,
+        local_storage_path=storage_path,
+        supabase_url="https://example.supabase.co",
+        supabase_service_role_key="secret",
+    )
+
+    with TestClient(create_app(settings)) as authed_client:
+        response = authed_client.get("/api/books")
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "authentication_required"
 
 
 def test_lists_local_books_by_latest_update(

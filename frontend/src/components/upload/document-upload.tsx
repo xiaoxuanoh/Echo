@@ -21,6 +21,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { useAuthSession } from "@/components/auth/use-auth-session";
 import {
   assignDocumentToFolder,
   getDocumentLibrary,
@@ -355,6 +356,8 @@ function PreparedPageCropCard({
   page: UploadPageResult;
   onPageCropped: (result: PageCropResult) => void;
 }) {
+  const { session } = useAuthSession();
+  const accessToken = session?.access_token ?? null;
   const frameRef = useRef<HTMLDivElement>(null);
   const [editing, setEditing] = useState(false);
   const [baseCrop, setBaseCrop] = useState<PageCrop>(() => cropFromPage(page));
@@ -371,7 +374,12 @@ function PreparedPageCropCard({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [imageVersion, setImageVersion] = useState(0);
-  const imageSrc = `${preparedPageImageUrl(documentId, page.page_number)}?v=${imageVersion}`;
+  const preparedImageSrc = preparedPageImageUrl(
+    documentId,
+    page.page_number,
+    accessToken,
+  );
+  const imageSrc = `${preparedImageSrc}${preparedImageSrc.includes("?") ? "&" : "?"}v=${imageVersion}`;
   const cropWidth = crop.crop_right - crop.crop_left;
   const cropHeight = crop.crop_bottom - crop.crop_top;
   const cropIsValid = cropWidth > 0.02 && cropHeight > 0.02;

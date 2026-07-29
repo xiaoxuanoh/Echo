@@ -9,6 +9,7 @@ import {
   recordingAudioDownloadUrl,
   renameDocumentRecording,
 } from "@/lib/api";
+import { useAuthSession } from "@/components/auth/use-auth-session";
 import type { AudioSegment, DocumentAudio, DocumentProcessingStatus } from "@/types/documents";
 
 
@@ -52,6 +53,8 @@ function listeningTitle(documentAudio: DocumentAudio): string {
 }
 
 export function DocumentAudioPlayer({ documentId }: { documentId: string }) {
+  const { session } = useAuthSession();
+  const accessToken = session?.access_token ?? null;
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const progressRestoredRef = useRef(false);
   const [documentAudio, setDocumentAudio] = useState<DocumentAudio | null>(null);
@@ -265,7 +268,7 @@ export function DocumentAudioPlayer({ documentId }: { documentId: string }) {
             </button>
             {segments.length > 0 && (
               <a
-                href={recordingAudioDownloadUrl(documentAudio.book_id)}
+                href={recordingAudioDownloadUrl(documentAudio.book_id, accessToken)}
                 download
                 className="inline-flex min-h-11 items-center justify-center rounded-lg border border-border bg-white px-4 font-semibold hover:bg-[#f8f6f0]"
               >
@@ -400,7 +403,7 @@ export function DocumentAudioPlayer({ documentId }: { documentId: string }) {
             key={currentSegment.id}
             ref={audioRef}
             controls
-            src={audioFileUrl(currentSegment.audio_url ?? "")}
+            src={audioFileUrl(currentSegment.audio_url ?? "", accessToken)}
             className="mt-6 w-full"
             onLoadedMetadata={() => {
               const audio = audioRef.current;

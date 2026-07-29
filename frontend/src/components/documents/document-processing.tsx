@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import { useAuthSession } from "@/components/auth/use-auth-session";
 import {
   deleteDocumentRecording,
   getDocument,
@@ -58,6 +59,8 @@ const textProcessingStatuses = new Set<DocumentProcessingStatus>([
 ]);
 
 export function DocumentProcessing({ documentId }: { documentId: string }) {
+  const { session } = useAuthSession();
+  const accessToken = session?.access_token ?? null;
   const router = useRouter();
   const [document, setDocument] = useState<DocumentDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -422,7 +425,11 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
               >
                 <div className="relative aspect-[3/4] bg-[#eeece5]">
                   <Image
-                    src={preparedPageImageUrl(document.id, page.page_number)}
+                    src={preparedPageImageUrl(
+                      document.id,
+                      page.page_number,
+                      accessToken,
+                    )}
                     alt={`Prepared preview of page ${page.page_number}`}
                     fill
                     unoptimized

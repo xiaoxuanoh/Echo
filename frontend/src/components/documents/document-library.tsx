@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { useAuthSession } from "@/components/auth/use-auth-session";
 import {
   deleteDocumentFolder,
   deleteDocumentRecording,
@@ -95,6 +96,8 @@ function downloadableRecordings(folder: DocumentLibraryFolder): DocumentLibraryI
 }
 
 export function DocumentLibrary() {
+  const { session } = useAuthSession();
+  const accessToken = session?.access_token ?? null;
   const openMenuRef = useRef<HTMLDivElement | null>(null);
   const selectedFolderIdRef = useRef<string | null>(null);
   const [folders, setFolders] = useState<DocumentLibraryFolder[]>([]);
@@ -360,7 +363,7 @@ export function DocumentLibrary() {
                 </p>
                 <div className="mt-5 grid gap-3">
                   <a
-                    href={folderAudioDownloadUrl(selectedFolder.id)}
+                    href={folderAudioDownloadUrl(selectedFolder.id, accessToken)}
                     download
                     onClick={() => setDownloadChoicesOpen(false)}
                     className="rounded-xl border border-accent bg-[#edf4f7] p-4 text-left hover:bg-[#e0eff4]"
@@ -376,7 +379,10 @@ export function DocumentLibrary() {
                     type="button"
                     onClick={() => {
                       for (const recording of downloadableRecordings(selectedFolder)) {
-                        window.open(recordingAudioDownloadUrl(recording.id), "_blank");
+                        window.open(
+                          recordingAudioDownloadUrl(recording.id, accessToken),
+                          "_blank",
+                        );
                       }
                       setDownloadChoicesOpen(false);
                     }}
