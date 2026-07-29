@@ -2,6 +2,7 @@ import logging
 import re
 from datetime import UTC, datetime
 from pathlib import Path
+from collections.abc import Callable
 from threading import Lock
 from uuid import UUID
 
@@ -78,10 +79,16 @@ class DocumentTextProcessingService:
         storage_root: Path,
         ocr_provider: OcrProvider,
         metadata: LocalDocumentMetadataService | None = None,
+        ensure_page_file: Callable[
+            [DocumentRecord, DocumentPageRecord, Path],
+            None,
+        ]
+        | None = None,
     ) -> None:
         self.storage_root = storage_root
         self.ocr_provider = ocr_provider
         self.metadata = metadata or LocalDocumentMetadataService()
+        self.ensure_page_file = ensure_page_file
 
     def document_directory(self, document_id: UUID) -> Path:
         return self.storage_root / str(document_id)
@@ -190,6 +197,8 @@ class DocumentTextProcessingService:
 
         try:
             image_path = self._safe_page_path(document.id, page.processed_image_path)
+            if self.ensure_page_file is not None:
+                self.ensure_page_file(document, page, image_path)
             result = self.ocr_provider.read_page(image_path)
             if not result.text.strip():
                 raise EchoError(

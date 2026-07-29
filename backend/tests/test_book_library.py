@@ -41,6 +41,10 @@ def test_supabase_auth_filters_library_by_user(
         "app.api.routes.books._metadata_service",
         lambda _: LocalDocumentMetadataService(),
     )
+    monkeypatch.setattr(
+        "app.api.routes.books._supabase_storage_enabled",
+        lambda _, user_id: False,
+    )
 
     with TestClient(create_app(settings)) as authed_client:
         first = authed_client.post(

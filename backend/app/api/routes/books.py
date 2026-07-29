@@ -64,7 +64,7 @@ from app.services.listening_languages import (
 )
 from app.services.ocr import create_ocr_provider
 from app.services.pdf_processing import PdfProcessingService
-from app.services.storage import LocalStorageService
+from app.services.storage import LocalStorageService, SupabaseStorageService
 from app.services.tts import create_tts_provider
 
 
@@ -167,6 +167,109 @@ def _metadata_service(
     return LocalDocumentMetadataService()
 
 
+def _supabase_storage_enabled(settings: object, user_id: UUID | None) -> bool:
+    return _supabase_auth_enabled(settings) and user_id is not None
+
+
+def _file_storage_service(settings: object) -> SupabaseStorageService:
+    return SupabaseStorageService(
+        supabase_url=getattr(settings, "supabase_url"),
+        service_role_key=getattr(settings, "supabase_service_role_key"),
+    )
+
+
+def _storage_object_path(
+    book: DocumentRecord,
+    relative_path: str,
+    *,
+    user_id: UUID,
+) -> str:
+    return f"{user_id}/{book.id}/{relative_path.lstrip('/')}"
+
+
+def _storage_prefix(book: DocumentRecord, *, user_id: UUID) -> str:
+    return f"{user_id}/{book.id}"
+
+
+def _store_document_file(
+    settings: object,
+    book: DocumentRecord,
+    *,
+    user_id: UUID | None,
+    bucket: str,
+    relative_path: str | None,
+    source: Path,
+    content_type: str,
+) -> None:
+    if not _supabase_storage_enabled(settings, user_id) or relative_path is None:
+        return
+    _file_storage_service(settings).upload_file(
+        bucket=bucket,
+        object_path=_storage_object_path(book, relative_path, user_id=user_id),
+        source=source,
+        content_type=content_type,
+    )
+
+
+def _download_document_file(
+    settings: object,
+    book: DocumentRecord,
+    *,
+    user_id: UUID | None,
+    bucket: str,
+    relative_path: str | None,
+    destination: Path,
+) -> Path:
+    if relative_path is None:
+        raise EchoError(
+            "stored_file_unavailable",
+            "Echo could not find that stored file.",
+            status_code=409,
+        )
+    if destination.exists() or not _supabase_storage_enabled(settings, user_id):
+        return destination
+    return _file_storage_service(settings).download_file(
+        bucket=bucket,
+        object_path=_storage_object_path(book, relative_path, user_id=user_id),
+        destination=destination,
+    )
+
+
+def _read_document_file(
+    settings: object,
+    book: DocumentRecord,
+    *,
+    user_id: UUID | None,
+    bucket: str,
+    relative_path: str | None,
+    local_path: Path,
+) -> bytes | None:
+    if relative_path is None:
+        return None
+    if _supabase_storage_enabled(settings, user_id):
+        return _file_storage_service(settings).read_file(
+            bucket=bucket,
+            object_path=_storage_object_path(book, relative_path, user_id=user_id),
+        )
+    if not local_path.is_file():
+        return None
+    return local_path.read_bytes()
+
+
+def _delete_document_files(
+    settings: object,
+    book: DocumentRecord,
+    *,
+    user_id: UUID | None,
+) -> None:
+    if not _supabase_storage_enabled(settings, user_id):
+        return
+    storage = _file_storage_service(settings)
+    prefix = _storage_prefix(book, user_id=user_id)
+    storage.delete_prefix(bucket=settings.supabase_storage_bucket_books, prefix=prefix)
+    storage.delete_prefix(bucket=settings.supabase_storage_bucket_pages, prefix=prefix)
+
+
 def _load_document_for_user(
     storage_root: Path,
     book_id: UUID,
@@ -239,12 +342,27 @@ def _document_relative_path(
     return resolved_path
 
 
-def _processing_service(request: Request) -> DocumentTextProcessingService:
+def _processing_service(
+    request: Request,
+    user_id: UUID | None = None,
+) -> DocumentTextProcessingService:
     settings = request.app.state.settings
     return DocumentTextProcessingService(
         storage_root=settings.local_storage_path,
         ocr_provider=create_ocr_provider(settings),
         metadata=_metadata_service(settings),
+        ensure_page_file=(
+            lambda document, page, destination: _download_document_file(
+                settings,
+                document,
+                user_id=user_id,
+                bucket=settings.supabase_storage_bucket_pages,
+                relative_path=page.processed_image_path,
+                destination=destination,
+            )
+            if _supabase_storage_enabled(settings, user_id)
+            else None
+        ),
     )
 
 
@@ -724,6 +842,14 @@ def preview_page_text(
         )
 
     image_path = _page_image_path(book_directory, page.processed_image_path)
+    _download_document_file(
+        settings,
+        book,
+        user_id=user_id,
+        bucket=settings.supabase_storage_bucket_pages,
+        relative_path=page.processed_image_path,
+        destination=image_path,
+    )
     result = create_ocr_provider(settings).read_page(image_path)
     return PageTextPreviewResult(
         book_id=str(book.id),
@@ -745,7 +871,7 @@ def get_prepared_page_image(
     request: Request,
     book_id: UUID,
     page_number: int = ApiPath(ge=1),
-) -> FileResponse:
+) -> Response:
     settings = request.app.state.settings
     user_id = _request_user_id(request)
     metadata = _metadata_service(settings)
@@ -768,13 +894,21 @@ def get_prepared_page_image(
         )
 
     image_path = _page_image_path(book_directory, page.processed_image_path)
-    if not image_path.is_file():
+    image_content = _read_document_file(
+        settings,
+        book,
+        user_id=user_id,
+        bucket=settings.supabase_storage_bucket_pages,
+        relative_path=page.processed_image_path,
+        local_path=image_path,
+    )
+    if image_content is None:
         raise EchoError(
             "page_image_missing",
             "Echo could not find the prepared page image.",
             status_code=404,
         )
-    return FileResponse(image_path, media_type="image/png")
+    return Response(content=image_content, media_type="image/png")
 
 
 @router.put(
@@ -838,6 +972,14 @@ def update_prepared_page_crop(
             invalid_code="page_original_image_invalid",
             invalid_message="The original page image path is invalid.",
         )
+        _download_document_file(
+            settings,
+            book,
+            user_id=user_id,
+            bucket=settings.supabase_storage_bucket_books,
+            relative_path=page.original_image_path,
+            destination=source_path,
+        )
         image_service.normalize_image(
             source_path,
             destination,
@@ -852,6 +994,14 @@ def update_prepared_page_crop(
             unavailable_message="Echo could not find the original PDF.",
             invalid_code="source_document_invalid",
             invalid_message="The original PDF path is invalid.",
+        )
+        _download_document_file(
+            settings,
+            book,
+            user_id=user_id,
+            bucket=settings.supabase_storage_bucket_books,
+            relative_path=book.source_storage_path,
+            destination=source_pdf,
         )
         pdf_service = PdfProcessingService(settings.pdf_text_min_characters)
         rendered_page = pdf_service.render_page(source_pdf, page.page_number - 1)
@@ -874,6 +1024,15 @@ def update_prepared_page_crop(
     page.processing_status = "pending"
     page.updated_at = now
     book.updated_at = now
+    _store_document_file(
+        settings,
+        book,
+        user_id=user_id,
+        bucket=settings.supabase_storage_bucket_pages,
+        relative_path=page.processed_image_path,
+        source=destination,
+        content_type="image/png",
+    )
     metadata.save(book_directory, book)
 
     return PageCropResult(
@@ -918,6 +1077,7 @@ async def upload_pdf(
     )
     book_directory = storage.create_document_directory(book_id)
     source_path = book_directory / "source.pdf"
+    document: DocumentRecord | None = None
 
     try:
         await storage.save_upload(file, source_path, settings.max_pdf_size_bytes)
@@ -995,8 +1155,31 @@ async def upload_pdf(
             created_at=now,
             updated_at=now,
         )
+        _store_document_file(
+            settings,
+            document,
+            user_id=user_id,
+            bucket=settings.supabase_storage_bucket_books,
+            relative_path=document.source_storage_path,
+            source=source_path,
+            content_type="application/pdf",
+        )
+        for page_record in page_records:
+            if page_record.processed_image_path is None:
+                continue
+            _store_document_file(
+                settings,
+                document,
+                user_id=user_id,
+                bucket=settings.supabase_storage_bucket_pages,
+                relative_path=page_record.processed_image_path,
+                source=book_directory / page_record.processed_image_path,
+                content_type="image/png",
+            )
         metadata_service.save(book_directory, document)
     except Exception:
+        if document is not None:
+            _delete_document_files(settings, document, user_id=user_id)
         shutil.rmtree(book_directory, ignore_errors=True)
         raise
 
@@ -1093,6 +1276,7 @@ async def upload_images(
     page_results: list[ImagePageResult] = []
     page_records: list[DocumentPageRecord] = []
     now = datetime.now(UTC)
+    document: DocumentRecord | None = None
 
     try:
         for index, (upload, rotation) in enumerate(
@@ -1176,8 +1360,31 @@ async def upload_images(
             created_at=now,
             updated_at=now,
         )
+        for page_record in page_records:
+            if page_record.original_image_path is not None:
+                _store_document_file(
+                    settings,
+                    document,
+                    user_id=user_id,
+                    bucket=settings.supabase_storage_bucket_books,
+                    relative_path=page_record.original_image_path,
+                    source=book_directory / page_record.original_image_path,
+                    content_type="application/octet-stream",
+                )
+            if page_record.processed_image_path is not None:
+                _store_document_file(
+                    settings,
+                    document,
+                    user_id=user_id,
+                    bucket=settings.supabase_storage_bucket_pages,
+                    relative_path=page_record.processed_image_path,
+                    source=book_directory / page_record.processed_image_path,
+                    content_type="image/png",
+                )
         metadata_service.save(book_directory, document)
     except Exception:
+        if document is not None:
+            _delete_document_files(settings, document, user_id=user_id)
         shutil.rmtree(book_directory, ignore_errors=True)
         raise
 
@@ -1281,6 +1488,7 @@ def delete_book_folder(request: Request, folder_id: UUID) -> DocumentMutationRes
         metadata,
         user_id,
     ):
+        _delete_document_files(settings, recording, user_id=user_id)
         metadata.delete(settings.local_storage_path / str(recording.id))
         shutil.rmtree(settings.local_storage_path / str(recording.id), ignore_errors=True)
 
@@ -1331,7 +1539,8 @@ def delete_recording(request: Request, book_id: UUID) -> DocumentMutationResult:
     user_id = _request_user_id(request)
     metadata = _metadata_service(settings)
     book_directory = settings.local_storage_path / str(book_id)
-    _load_document_for_user(settings.local_storage_path, book_id, user_id, metadata)
+    book = _load_document_for_user(settings.local_storage_path, book_id, user_id, metadata)
+    _delete_document_files(settings, book, user_id=user_id)
     metadata.delete(book_directory)
     shutil.rmtree(book_directory, ignore_errors=True)
     return DocumentMutationResult(message="Echo removed this recording.")
@@ -1520,7 +1729,7 @@ def process_book_text(
             status_code=409,
         )
     try:
-        service = _processing_service(request)
+        service = _processing_service(request, user_id)
         book = service.prepare_document_job(book_id)
     except Exception:
         registry.finish(book_id)
@@ -1557,7 +1766,7 @@ def retry_page_text(
             status_code=409,
         )
     try:
-        service = _processing_service(request)
+        service = _processing_service(request, user_id)
         book = service.prepare_retry_job(book_id, page_number)
     except Exception:
         registry.finish(book_id)

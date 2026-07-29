@@ -1,10 +1,14 @@
 import io
 import json
 from pathlib import Path
+from uuid import UUID
 
 from fastapi.testclient import TestClient
 from PIL import Image
 
+from app.core.config import Settings
+from app.main import create_app
+from app.services.document_metadata import LocalDocumentMetadataService
 from tests.conftest import make_pdf
 
 
@@ -220,6 +224,68 @@ def test_prepared_page_image_rejects_pages_without_images(client: TestClient) ->
     assert image_response.json()["error"]["code"] == "page_image_unavailable"
 
 
+def test_supabase_storage_uploads_serves_and_deletes_page_images(
+    storage_path: Path,
+    monkeypatch,
+) -> None:
+    user_id = UUID("77777777-7777-4777-8777-777777777777")
+    fake_storage = FakeSupabaseStorage()
+    settings = Settings(
+        _env_file=None,
+        local_storage_path=storage_path,
+        supabase_url="https://example.supabase.co",
+        supabase_service_role_key="secret",
+        supabase_storage_bucket_books="documents-source",
+        supabase_storage_bucket_pages="documents-pages",
+        max_image_size_mb=1,
+        max_image_upload_count=3,
+        max_image_pixels=10_000_000,
+    )
+    monkeypatch.setattr(
+        "app.api.routes.books._verify_supabase_user_id",
+        lambda _, token: user_id,
+    )
+    monkeypatch.setattr(
+        "app.api.routes.books._metadata_service",
+        lambda _: LocalDocumentMetadataService(),
+    )
+    monkeypatch.setattr(
+        "app.api.routes.books._file_storage_service",
+        lambda _: fake_storage,
+    )
+
+    with TestClient(create_app(settings)) as authed_client:
+        response = authed_client.post(
+            "/api/books/images",
+            headers={"Authorization": "Bearer token"},
+            files=[("files", ("page.png", image_bytes((20, 30)), "image/png"))],
+            data={"rotations": "[0]"},
+        )
+        assert response.status_code == 200
+        book_id = response.json()["book_id"]
+
+        image_response = authed_client.get(
+            f"/api/books/{book_id}/pages/1/image",
+            headers={"Authorization": "Bearer token"},
+        )
+        delete_response = authed_client.delete(
+            f"/api/books/{book_id}",
+            headers={"Authorization": "Bearer token"},
+        )
+
+    source_key = ("documents-source", f"{user_id}/{book_id}/originals/original-0001.png")
+    page_key = ("documents-pages", f"{user_id}/{book_id}/pages/page-0001.png")
+    assert source_key in fake_storage.objects
+    assert page_key in fake_storage.objects
+    assert image_response.status_code == 200
+    assert image_response.content == fake_storage.objects[page_key]
+    assert delete_response.status_code == 200
+    assert fake_storage.deleted_prefixes == [
+        ("documents-source", f"{user_id}/{book_id}"),
+        ("documents-pages", f"{user_id}/{book_id}"),
+    ]
+
+
 def test_corrects_exif_orientation_before_user_rotation(tmp_path: Path) -> None:
     from app.services.image_processing import ImageProcessingService
 
@@ -231,6 +297,40 @@ def test_corrects_exif_orientation_before_user_rotation(tmp_path: Path) -> None:
 
     with Image.open(destination) as normalized:
         assert normalized.size == (20, 10)
+
+
+class FakeSupabaseStorage:
+    def __init__(self) -> None:
+        self.objects: dict[tuple[str, str], bytes] = {}
+        self.deleted_prefixes: list[tuple[str, str]] = []
+
+    def upload_file(
+        self,
+        *,
+        bucket: str,
+        object_path: str,
+        source: Path,
+        content_type: str,
+    ) -> None:
+        del content_type
+        self.objects[(bucket, object_path)] = source.read_bytes()
+
+    def read_file(self, *, bucket: str, object_path: str) -> bytes:
+        return self.objects[(bucket, object_path)]
+
+    def download_file(
+        self,
+        *,
+        bucket: str,
+        object_path: str,
+        destination: Path,
+    ) -> Path:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(self.objects[(bucket, object_path)])
+        return destination
+
+    def delete_prefix(self, *, bucket: str, prefix: str) -> None:
+        self.deleted_prefixes.append((bucket, prefix))
 
 
 def test_crops_obvious_photo_background_before_ocr(tmp_path: Path) -> None:

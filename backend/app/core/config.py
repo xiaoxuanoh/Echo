@@ -22,9 +22,9 @@ class Settings(BaseSettings):
     ffmpeg_path: str = "ffmpeg"
     supabase_url: str = ""
     supabase_service_role_key: str = ""
-    supabase_storage_bucket_books: str = "books"
-    supabase_storage_bucket_pages: str = "pages"
-    supabase_storage_bucket_audio: str = "audio"
+    supabase_storage_bucket_books: str = "documents-source"
+    supabase_storage_bucket_pages: str = "documents-pages"
+    supabase_storage_bucket_audio: str = "documents-audio"
     ocr_enabled: bool = False
     ocr_text_detection_model: str = "PP-OCRv5_mobile_det"
     ocr_text_recognition_model: str = "PP-OCRv5_mobile_rec"
