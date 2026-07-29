@@ -10,3 +10,17 @@ def test_health(client: TestClient) -> None:
         "app": "Echo",
         "environment": "development",
     }
+
+
+def test_cors_allows_crop_put_preflight(client: TestClient) -> None:
+    response = client.options(
+        "/api/books/book-id/pages/1/crop",
+        headers={
+            "Origin": "http://localhost:3001",
+            "Access-Control-Request-Method": "PUT",
+            "Access-Control-Request-Headers": "Content-Type",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "PUT" in response.headers["access-control-allow-methods"]

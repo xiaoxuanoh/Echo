@@ -97,11 +97,123 @@ describe("page photo workflow", () => {
     expect(screen.getByText("Preview pages before OCR")).toBeVisible();
     expect(screen.getByAltText("Prepared preview of page 1")).toHaveAttribute(
       "src",
-      "http://localhost:8001/api/books/temporary-document-id/pages/1/image",
+      "http://localhost:8001/api/books/temporary-document-id/pages/1/image?v=0",
     );
     expect(
       screen.getByRole("link", { name: "Review upload" }),
     ).toHaveAttribute("href", "/books/temporary-document-id");
+  });
+
+  it("saves a manual crop for a prepared OCR page", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            book_id: "temporary-document-id",
+            source_type: "images",
+            target_language: "cantonese",
+            tts_voice: "zh-HK-HiuMaanNeural",
+            total_pages: 1,
+            ordered_image_filenames: ["page-one.png"],
+            pages: [
+              {
+                page_id: "page-id-1",
+                page_number: 1,
+                original_filename: "page-one.png",
+                original_image_path: "originals/original-0001.png",
+                processed_image_path: "pages/page-0001.png",
+                extraction_method: "ocr",
+                extracted_character_count: 0,
+                normalized_filename: "page-0001.png",
+                crop_left: null,
+                crop_top: null,
+                crop_right: null,
+                crop_bottom: null,
+                rotation_degrees: 0,
+                processing_status: "pending",
+              },
+            ],
+            processing_status: "uploaded",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            book_id: "temporary-document-id",
+            page_id: "page-id-1",
+            page_number: 1,
+            crop_left: 0.2,
+            crop_top: 0.1,
+            crop_right: 0.8,
+            crop_bottom: 0.9,
+            processed_image_path: "pages/page-0001.png",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            book_id: "temporary-document-id",
+            page_id: "page-id-1",
+            page_number: 1,
+            crop_left: 0.2,
+            crop_top: 0.1,
+            crop_right: 0.8,
+            crop_bottom: 0.9,
+            processed_image_path: "pages/page-0001.png",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+
+    render(<DocumentUpload libraryDocumentId="folder-id" />);
+    fireEvent.click(screen.getByRole("button", { name: /^Upload Page Photos/ }));
+    fireEvent.change(screen.getByLabelText("Choose page photos"), {
+      target: {
+        files: [new File(["one"], "page-one.png", { type: "image/png" })],
+      },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Prepare your upload" }));
+
+    expect(await screen.findByText("Preview pages before OCR")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Crop" }));
+    expect(screen.getByText("Drag the box to move it. Drag a corner to resize it.")).toBeVisible();
+    expect(screen.queryByRole("slider")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save crop" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(fetchMock.mock.calls[1][0]).toContain(
+      "/api/books/temporary-document-id/pages/1/crop",
+    );
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(JSON.parse(fetchMock.mock.calls[1][1]?.body as string)).toEqual({
+      crop_left: 0,
+      crop_top: 0,
+      crop_right: 1,
+      crop_bottom: 1,
+    });
+    expect(screen.getByAltText("Prepared preview of page 1")).toHaveAttribute(
+      "src",
+      "http://localhost:8001/api/books/temporary-document-id/pages/1/image?v=1",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Crop" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save crop" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(JSON.parse(fetchMock.mock.calls[2][1]?.body as string)).toEqual({
+      crop_left: 0.2,
+      crop_top: 0.1,
+      crop_right: 0.8,
+      crop_bottom: 0.9,
+    });
   });
 
   it("submits a target library document when adding another recording", async () => {

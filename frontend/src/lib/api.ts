@@ -5,6 +5,8 @@ import type {
   DocumentLibrary,
   DocumentProcessingAccepted,
   ImageUploadResult,
+  PageCrop,
+  PageCropResult,
   PdfUploadResult,
   Rotation,
 } from "@/types/documents";
@@ -154,6 +156,21 @@ export function recordingAudioDownloadUrl(documentId: string): string {
 
 export function preparedPageImageUrl(documentId: string, pageNumber: number): string {
   return `${API_BASE_URL}/api/books/${documentId}/pages/${pageNumber}/image`;
+}
+
+export async function updatePreparedPageCrop(
+  documentId: string,
+  pageNumber: number,
+  crop: PageCrop,
+): Promise<PageCropResult> {
+  return parseResponse<PageCropResult>(
+    await fetch(`${API_BASE_URL}/api/books/${documentId}/pages/${pageNumber}/crop`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(crop),
+    }),
+    `Echo could not save the crop for page ${pageNumber}.`,
+  );
 }
 
 type UploadOptions = {

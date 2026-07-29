@@ -250,6 +250,8 @@ def test_crops_obvious_photo_background_before_ocr(tmp_path: Path) -> None:
         assert normalized.height < photo.height
         assert normalized.width >= page.width
         assert normalized.height >= page.height
+        assert normalized.width <= page.width + 25
+        assert normalized.height <= page.height + 30
 
 
 def test_keeps_ambiguous_image_size_when_page_crop_is_unclear(tmp_path: Path) -> None:

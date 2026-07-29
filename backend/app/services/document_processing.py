@@ -8,7 +8,7 @@ from uuid import UUID
 from app.core.errors import EchoError
 from app.models.documents import DocumentPageRecord, DocumentRecord
 from app.services.document_metadata import LocalDocumentMetadataService
-from app.services.ocr import OcrProvider
+from app.services.ocr import OcrLine, OcrProvider
 
 
 logger = logging.getLogger(__name__)
@@ -27,13 +27,18 @@ CHART_START_PATTERN = re.compile(
     re.IGNORECASE,
 )
 CHART_SOURCE_PATTERN = re.compile(
-    r"^(?:資料來源|资料来源|來源|来源|source)\s*[:：]?.*",
+    r"^(?:資料來源|資料来源|资料來源|资料来源|來源|来源|source)\s*[:：]?.*",
     re.IGNORECASE,
 )
 CHART_SHORT_LABEL_PATTERN = re.compile(
     r"^[\w\s().,%/+-]*$",
     re.IGNORECASE,
 )
+CJK_CHARACTER_PATTERN = re.compile(r"[\u3400-\u9fff]")
+CJK_PROSE_PUNCTUATION_PATTERN = re.compile(r"[，。！？；：「」『』]")
+LATIN_CHARACTER_PATTERN = re.compile(r"[A-Za-z]")
+MEANINGFUL_CJK_PROSE_MINIMUM = 8
+LOW_CONFIDENCE_NOISE_THRESHOLD = 0.50
 CHART_PLACEHOLDERS = {
     "cantonese": "此處有一個圖表。",
     "mandarin": "此处有一个图表。",
@@ -191,8 +196,8 @@ class DocumentTextProcessingService:
                     "no_page_text",
                     "Echo could not find readable text on this page.",
                 )
-            page.extracted_text = self._clean_ocr_text(
-                result.text,
+            page.extracted_text = self._clean_ocr_result(
+                result.lines,
                 target_language=document.target_language,
             )
             page.processing_status = "completed"
@@ -286,20 +291,62 @@ class DocumentTextProcessingService:
         *,
         target_language: str | None,
     ) -> str:
-        lines = cls._remove_running_headers(
-            cls._remove_isolated_page_number_lines(text).splitlines()
-        )
+        lines = cls._prepare_ocr_text_lines(text)
         cleaned_lines = cls._replace_chart_blocks(lines, target_language=target_language)
         return "\n".join(line for line in cleaned_lines if line.strip()).strip()
+
+    @classmethod
+    def _clean_ocr_result(
+        cls,
+        lines: list[OcrLine],
+        *,
+        target_language: str | None,
+    ) -> str:
+        text_lines = cls._prepare_ocr_lines(lines)
+        cleaned_lines = cls._replace_chart_blocks(
+            text_lines,
+            target_language=target_language,
+        )
+        cleaned_lines = cls._remove_short_orphan_lines(cleaned_lines)
+        return "\n".join(line for line in cleaned_lines if line.strip()).strip()
+
+    @classmethod
+    def _prepare_ocr_text_lines(cls, text: str) -> list[str]:
+        return cls._remove_running_headers(
+            cls._remove_isolated_page_number_lines(text).splitlines()
+        )
+
+    @classmethod
+    def _prepare_ocr_lines(cls, lines: list[OcrLine]) -> list[str]:
+        kept_lines = [
+            line.text
+            for line in lines
+            if cls._should_keep_confident_line(line)
+        ]
+        return cls._remove_running_headers(
+            cls._remove_isolated_page_number_lines("\n".join(kept_lines)).splitlines()
+        )
+
+    @staticmethod
+    def _should_keep_confident_line(line: OcrLine) -> bool:
+        text = line.text.strip()
+        if not text:
+            return False
+        if (
+            line.confidence < LOW_CONFIDENCE_NOISE_THRESHOLD
+            and len(text) <= 12
+            and not CJK_PROSE_PUNCTUATION_PATTERN.search(text)
+        ):
+            return False
+        return True
 
     @staticmethod
     def _remove_running_headers(lines: list[str]) -> list[str]:
         cleaned = list(lines)
-        for index in (0, len(cleaned) - 1):
-            if not cleaned:
-                break
-            line = cleaned[index].strip()
-            if RUNNING_HEADER_PATTERN.fullmatch(line):
+        for index, line in enumerate(cleaned):
+            if index >= 4 and index != len(cleaned) - 1:
+                continue
+            if RUNNING_HEADER_PATTERN.fullmatch(line.strip()):
                 cleaned[index] = ""
         return [line for line in cleaned if line.strip()]
 
@@ -343,6 +390,39 @@ class DocumentTextProcessingService:
             return True
         if line[-1:] in ".。!?！？":
             return False
+        if CJK_PROSE_PUNCTUATION_PATTERN.search(line):
+            return False
+        if len(CJK_CHARACTER_PATTERN.findall(line)) >= MEANINGFUL_CJK_PROSE_MINIMUM:
+            return False
         if len(line) <= 24:
             return True
         return len(line) <= 40 and bool(CHART_SHORT_LABEL_PATTERN.fullmatch(line))
+
+    @classmethod
+    def _remove_short_orphan_lines(cls, lines: list[str]) -> list[str]:
+        cleaned: list[str] = []
+        for index, line in enumerate(lines):
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if cls._is_short_orphan_line(stripped, index=index, total=len(lines)):
+                continue
+            cleaned.append(line)
+        return cleaned
+
+    @staticmethod
+    def _is_short_orphan_line(line: str, *, index: int, total: int) -> bool:
+        cjk_count = len(CJK_CHARACTER_PATTERN.findall(line))
+        has_latin = bool(LATIN_CHARACTER_PATTERN.search(line))
+        has_prose_punctuation = bool(CJK_PROSE_PUNCTUATION_PATTERN.search(line))
+        if index <= 2 and has_latin and len(line) <= 12 and cjk_count == 0:
+            return True
+        if index <= 3 and 0 < cjk_count <= 1 and not has_prose_punctuation:
+            return True
+        if (
+            0 < cjk_count < MEANINGFUL_CJK_PROSE_MINIMUM
+            and not has_prose_punctuation
+            and 0 < index < total - 1
+        ):
+            return True
+        return False

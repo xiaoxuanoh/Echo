@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from app.core.errors import EchoError
 from app.services.document_processing import DocumentTextProcessingService
 from app.services.document_metadata import LocalDocumentMetadataService
-from app.services.ocr import MockOcrProvider, OcrResult
+from app.services.ocr import MockOcrProvider, OcrLine, OcrResult
 from tests.conftest import make_pdf
 from tests.test_uploads import image_bytes
 
@@ -80,6 +80,88 @@ def test_ocr_cleanup_uses_target_language_for_chart_placeholder() -> None:
     assert mandarin == "此处有一个图表。\nThe market does not only move upward."
     assert english == "There is a chart here.\nThe market does not only move upward."
     assert fallback == "There is a chart here.\nThe market does not only move upward."
+
+
+def test_ocr_cleanup_preserves_cjk_prose_after_chart_source() -> None:
+    text = (
+        "圖1.1：SPDR黄金ETF（GLD）股價走勢\n"
+        "美元\n"
+        "450\n"
+        "400\n"
+        "350\n"
+        "300\n"
+        "成交量（萬股）\n"
+        "5000\n"
+        "1/2026\n"
+        "11\n"
+        "3\n"
+        "5/2025\n"
+        "7\n"
+        "资料來源：Nasdaq.com\n"
+        "桿效應+有限風險。你的核心股票投資組合，負責穩穩\n"
+        "增值，例如長期持有礦業股或ETF·期權則像「火箭推進"
+    )
+
+    cleaned = DocumentTextProcessingService._clean_ocr_text(
+        text,
+        target_language="cantonese",
+    )
+
+    assert cleaned == (
+        "此處有一個圖表。\n"
+        "桿效應+有限風險。你的核心股票投資組合，負責穩穩\n"
+        "增值，例如長期持有礦業股或ETF·期權則像「火箭推進"
+    )
+
+
+def test_ocr_result_cleanup_removes_noise_around_chart_and_body() -> None:
+    lines = [
+        OcrLine(text="ae", confidence=0.23),
+        OcrLine(text="hiwlo", confidence=0.36),
+        OcrLine(text="第一章大户候機随勢變招", confidence=0.90),
+        OcrLine(text="支", confidence=1.0),
+        OcrLine(text="圖1.1：SPDR黄金ETF（GLD）股價走勢", confidence=0.94),
+        OcrLine(text="個", confidence=0.99),
+        OcrLine(text="美元", confidence=1.0),
+        OcrLine(text="權", confidence=0.94),
+        OcrLine(text="450", confidence=0.98),
+        OcrLine(text="Narita", confidence=1.0),
+        OcrLine(text="成交量（萬股）", confidence=0.96),
+        OcrLine(text="·5000", confidence=0.86),
+        OcrLine(text="资料來源：Nasdaq.com", confidence=0.93),
+        OcrLine(
+            text="桿效應+有限風險。你的核心股票投資組合，負責穩穩",
+            confidence=0.98,
+        ),
+        OcrLine(
+            text="增值，例如長期持有礦業股或ETF·期權則像「火箭推進",
+            confidence=0.97,
+        ),
+        OcrLine(
+            text="器」，讓你在行情來臨時用小錢賺大錢。只用積蓄的一小",
+            confidence=0.98,
+        ),
+        OcrLine(text="覺也安心！", confidence=0.99),
+        OcrLine(text="是投輕横", confidence=0.88),
+        OcrLine(
+            text="可是，市場從來不會只升不跌。2026年1月底，金價和銀",
+            confidence=0.99,
+        ),
+    ]
+
+    cleaned = DocumentTextProcessingService._clean_ocr_result(
+        lines,
+        target_language="cantonese",
+    )
+
+    assert cleaned == (
+        "此處有一個圖表。\n"
+        "桿效應+有限風險。你的核心股票投資組合，負責穩穩\n"
+        "增值，例如長期持有礦業股或ETF·期權則像「火箭推進\n"
+        "器」，讓你在行情來臨時用小錢賺大錢。只用積蓄的一小\n"
+        "覺也安心！\n"
+        "可是，市場從來不會只升不跌。2026年1月底，金價和銀"
+    )
 
 
 def test_processes_all_image_pages_in_order(

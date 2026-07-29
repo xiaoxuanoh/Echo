@@ -9,6 +9,10 @@ export type PdfPageResult = {
   processed_image_path: string | null;
   extraction_method: "embedded_text" | "ocr";
   extracted_character_count: number;
+  crop_left: number | null;
+  crop_top: number | null;
+  crop_right: number | null;
+  crop_bottom: number | null;
   rotation_degrees: 0;
   processing_status: "pending" | "completed";
 };
@@ -34,6 +38,10 @@ export type ImagePageResult = {
   extraction_method: "ocr";
   extracted_character_count: 0;
   normalized_filename: string;
+  crop_left: number | null;
+  crop_top: number | null;
+  crop_right: number | null;
+  crop_bottom: number | null;
   rotation_degrees: 0 | 90 | 180 | 270;
   processing_status: "pending";
 };
@@ -50,6 +58,7 @@ export type ImageUploadResult = {
 };
 
 export type UploadResult = PdfUploadResult | ImageUploadResult;
+export type UploadPageResult = PdfPageResult | ImagePageResult;
 export type Rotation = 0 | 90 | 180 | 270;
 
 export type DocumentProcessingStatus =
@@ -78,6 +87,10 @@ export type DocumentPageDetail = {
   extraction_method: "pending" | "embedded_text" | "ocr";
   extracted_text: string;
   extracted_character_count: number;
+  crop_left: number | null;
+  crop_top: number | null;
+  crop_right: number | null;
+  crop_bottom: number | null;
   processing_status: PageProcessingStatus;
   error_message: string | null;
   updated_at: string;
@@ -142,6 +155,20 @@ export type DocumentProcessingAccepted = {
   book_id: string;
   processing_status: "extracting_text" | "running_ocr";
   message: string;
+};
+
+export type PageCrop = {
+  crop_left: number;
+  crop_top: number;
+  crop_right: number;
+  crop_bottom: number;
+};
+
+export type PageCropResult = PageCrop & {
+  book_id: string;
+  page_id: string;
+  page_number: number;
+  processed_image_path: string;
 };
 
 export type AudioSegment = {

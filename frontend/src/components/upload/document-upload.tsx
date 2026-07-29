@@ -19,13 +19,14 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   assignDocumentToFolder,
   getDocumentLibrary,
   preparedPageImageUrl,
   renameDocumentFolder,
+  updatePreparedPageCrop,
   uploadImages,
   uploadPdf,
 } from "@/lib/api";
@@ -37,7 +38,14 @@ import {
   type ListeningLanguage,
 } from "@/lib/listening-languages";
 import { validateNewImages, validatePdf } from "@/lib/upload-validation";
-import type { DocumentLibraryFolder, Rotation, UploadResult } from "@/types/documents";
+import type {
+  DocumentLibraryFolder,
+  PageCrop,
+  PageCropResult,
+  Rotation,
+  UploadPageResult,
+  UploadResult,
+} from "@/types/documents";
 
 type Mode = "pdf" | "images";
 type PendingImage = {
@@ -79,6 +87,43 @@ function suggestedFolderName(result: UploadResult): string {
 function nextRotation(current: Rotation, direction: "left" | "right"): Rotation {
   const amount = direction === "right" ? 90 : 270;
   return ((current + amount) % 360) as Rotation;
+}
+
+function cropFromPage(page: UploadPageResult): PageCrop {
+  return {
+    crop_left: page.crop_left ?? 0,
+    crop_top: page.crop_top ?? 0,
+    crop_right: page.crop_right ?? 1,
+    crop_bottom: page.crop_bottom ?? 1,
+  };
+}
+
+function fullCrop(): PageCrop {
+  return { crop_left: 0, crop_top: 0, crop_right: 1, crop_bottom: 1 };
+}
+
+function composeCrop(baseCrop: PageCrop, localCrop: PageCrop): PageCrop {
+  const baseWidth = baseCrop.crop_right - baseCrop.crop_left;
+  const baseHeight = baseCrop.crop_bottom - baseCrop.crop_top;
+  return {
+    crop_left: cropFixed(baseCrop.crop_left + localCrop.crop_left * baseWidth),
+    crop_top: cropFixed(baseCrop.crop_top + localCrop.crop_top * baseHeight),
+    crop_right: cropFixed(baseCrop.crop_left + localCrop.crop_right * baseWidth),
+    crop_bottom: cropFixed(baseCrop.crop_top + localCrop.crop_bottom * baseHeight),
+  };
+}
+
+function clampCropValue(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(1, Math.max(0, value));
+}
+
+function cropPercent(value: number): number {
+  return Math.round(value * 100);
+}
+
+function cropFixed(value: number): number {
+  return Number(value.toFixed(4));
 }
 
 function SortablePage({
@@ -301,14 +346,342 @@ function UploadDestinationModal({
   );
 }
 
+function PreparedPageCropCard({
+  documentId,
+  page,
+  onPageCropped,
+}: {
+  documentId: string;
+  page: UploadPageResult;
+  onPageCropped: (result: PageCropResult) => void;
+}) {
+  const frameRef = useRef<HTMLDivElement>(null);
+  const [editing, setEditing] = useState(false);
+  const [baseCrop, setBaseCrop] = useState<PageCrop>(() => cropFromPage(page));
+  const [crop, setCrop] = useState<PageCrop>(() => fullCrop());
+  const [imageSize, setImageSize] = useState<{ width: number; height: number } | null>(
+    null,
+  );
+  const [displayRect, setDisplayRect] = useState<{
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [imageVersion, setImageVersion] = useState(0);
+  const imageSrc = `${preparedPageImageUrl(documentId, page.page_number)}?v=${imageVersion}`;
+  const cropWidth = crop.crop_right - crop.crop_left;
+  const cropHeight = crop.crop_bottom - crop.crop_top;
+  const cropIsValid = cropWidth > 0.02 && cropHeight > 0.02;
+
+  const refreshDisplayRect = useCallback(() => {
+    const frame = frameRef.current;
+    if (!frame || !imageSize) {
+      setDisplayRect(null);
+      return;
+    }
+    const frameWidth = frame.clientWidth;
+    const frameHeight = frame.clientHeight;
+    if (frameWidth <= 0 || frameHeight <= 0) {
+      setDisplayRect(null);
+      return;
+    }
+    const imageRatio = imageSize.width / imageSize.height;
+    const frameRatio = frameWidth / frameHeight;
+    const renderedWidth = frameRatio > imageRatio ? frameHeight * imageRatio : frameWidth;
+    const renderedHeight =
+      frameRatio > imageRatio ? frameHeight : frameWidth / imageRatio;
+    setDisplayRect({
+      left: (frameWidth - renderedWidth) / 2,
+      top: (frameHeight - renderedHeight) / 2,
+      width: renderedWidth,
+      height: renderedHeight,
+    });
+  }, [imageSize]);
+
+  useEffect(() => {
+    refreshDisplayRect();
+  }, [refreshDisplayRect]);
+
+  useEffect(() => {
+    window.addEventListener("resize", refreshDisplayRect);
+    return () => window.removeEventListener("resize", refreshDisplayRect);
+  }, [refreshDisplayRect]);
+
+  function normalizedPointerPosition(event: React.PointerEvent<HTMLElement>) {
+    const frame = frameRef.current;
+    const rect = displayRect;
+    if (!frame || !rect) return null;
+    const frameBounds = frame.getBoundingClientRect();
+    return {
+      x: clampCropValue((event.clientX - frameBounds.left - rect.left) / rect.width),
+      y: clampCropValue((event.clientY - frameBounds.top - rect.top) / rect.height),
+    };
+  }
+
+  function moveCrop(event: React.PointerEvent<HTMLElement>) {
+    const start = normalizedPointerPosition(event);
+    if (!start) return;
+    const dragStart = start;
+    const startCrop = crop;
+    event.currentTarget.setPointerCapture(event.pointerId);
+
+    function onPointerMove(moveEvent: PointerEvent) {
+      const frame = frameRef.current;
+      const rect = displayRect;
+      if (!frame || !rect) return;
+      const frameBounds = frame.getBoundingClientRect();
+      const nextX = clampCropValue(
+        (moveEvent.clientX - frameBounds.left - rect.left) / rect.width,
+      );
+      const nextY = clampCropValue(
+        (moveEvent.clientY - frameBounds.top - rect.top) / rect.height,
+      );
+      const width = startCrop.crop_right - startCrop.crop_left;
+      const height = startCrop.crop_bottom - startCrop.crop_top;
+      const left = clampCropValue(startCrop.crop_left + nextX - dragStart.x);
+      const top = clampCropValue(startCrop.crop_top + nextY - dragStart.y);
+      setError(null);
+      setCrop({
+        crop_left: cropFixed(Math.min(left, 1 - width)),
+        crop_top: cropFixed(Math.min(top, 1 - height)),
+        crop_right: cropFixed(Math.min(left, 1 - width) + width),
+        crop_bottom: cropFixed(Math.min(top, 1 - height) + height),
+      });
+    }
+
+    function onPointerUp() {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+    }
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp, { once: true });
+  }
+
+  function resizeCrop(
+    corner: "top-left" | "top-right" | "bottom-left" | "bottom-right",
+    event: React.PointerEvent<HTMLButtonElement>,
+  ) {
+    event.stopPropagation();
+    const startCrop = crop;
+    event.currentTarget.setPointerCapture(event.pointerId);
+
+    function onPointerMove(moveEvent: PointerEvent) {
+      const frame = frameRef.current;
+      const rect = displayRect;
+      if (!frame || !rect) return;
+      const frameBounds = frame.getBoundingClientRect();
+      const nextX = clampCropValue(
+        (moveEvent.clientX - frameBounds.left - rect.left) / rect.width,
+      );
+      const nextY = clampCropValue(
+        (moveEvent.clientY - frameBounds.top - rect.top) / rect.height,
+      );
+      const minimum = 0.02;
+      const nextCrop = { ...startCrop };
+      if (corner.includes("left")) {
+        nextCrop.crop_left = Math.min(nextX, startCrop.crop_right - minimum);
+      }
+      if (corner.includes("right")) {
+        nextCrop.crop_right = Math.max(nextX, startCrop.crop_left + minimum);
+      }
+      if (corner.includes("top")) {
+        nextCrop.crop_top = Math.min(nextY, startCrop.crop_bottom - minimum);
+      }
+      if (corner.includes("bottom")) {
+        nextCrop.crop_bottom = Math.max(nextY, startCrop.crop_top + minimum);
+      }
+      setError(null);
+      setCrop({
+        crop_left: cropFixed(clampCropValue(nextCrop.crop_left)),
+        crop_top: cropFixed(clampCropValue(nextCrop.crop_top)),
+        crop_right: cropFixed(clampCropValue(nextCrop.crop_right)),
+        crop_bottom: cropFixed(clampCropValue(nextCrop.crop_bottom)),
+      });
+    }
+
+    function onPointerUp() {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+    }
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp, { once: true });
+  }
+
+  async function saveCrop() {
+    if (!cropIsValid) {
+      setError("Choose a larger crop area before saving.");
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    try {
+      const saved = await updatePreparedPageCrop(
+        documentId,
+        page.page_number,
+        composeCrop(baseCrop, crop),
+      );
+      const savedCrop = {
+        crop_left: saved.crop_left,
+        crop_top: saved.crop_top,
+        crop_right: saved.crop_right,
+        crop_bottom: saved.crop_bottom,
+      };
+      setBaseCrop(savedCrop);
+      setCrop({
+        crop_left: 0,
+        crop_top: 0,
+        crop_right: 1,
+        crop_bottom: 1,
+      });
+      setImageVersion((current) => current + 1);
+      setEditing(false);
+      onPageCropped(saved);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Echo could not save the crop.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <li className="overflow-hidden rounded-xl border border-[#cbded1] bg-white">
+      <div ref={frameRef} className="relative aspect-[3/4] overflow-hidden bg-[#eeece5]">
+        <Image
+          src={imageSrc}
+          alt={`Prepared preview of page ${page.page_number}`}
+          fill
+          unoptimized
+          className="object-contain"
+          onLoad={(event) => {
+            setImageSize({
+              width: event.currentTarget.naturalWidth,
+              height: event.currentTarget.naturalHeight,
+            });
+          }}
+        />
+        {editing && displayRect && (
+          <div
+            className="absolute bg-[#17202a66]"
+            style={{
+              left: displayRect.left,
+              top: displayRect.top,
+              width: displayRect.width,
+              height: displayRect.height,
+            }}
+          >
+            <div
+              role="group"
+              aria-label={`Crop area for page ${page.page_number}`}
+              onPointerDown={moveCrop}
+              className={`absolute touch-none cursor-move border-2 ${cropIsValid ? "border-white" : "border-[#d95043]"} bg-white/15 shadow-[0_0_0_9999px_rgba(23,32,42,0.35)]`}
+              style={{
+                left: `${cropPercent(crop.crop_left)}%`,
+                top: `${cropPercent(crop.crop_top)}%`,
+                width: `${cropPercent(cropWidth)}%`,
+                height: `${cropPercent(cropHeight)}%`,
+              }}
+            >
+              {(
+                [
+                  ["top-left", "top-0 left-0 -translate-x-1/2 -translate-y-1/2 cursor-nwse-resize"],
+                  ["top-right", "top-0 right-0 translate-x-1/2 -translate-y-1/2 cursor-nesw-resize"],
+                  ["bottom-left", "bottom-0 left-0 -translate-x-1/2 translate-y-1/2 cursor-nesw-resize"],
+                  ["bottom-right", "right-0 bottom-0 translate-x-1/2 translate-y-1/2 cursor-nwse-resize"],
+                ] as const
+              ).map(([corner, positionClass]) => (
+                <button
+                  key={corner}
+                  type="button"
+                  aria-label={`Resize ${corner} crop corner`}
+                  onPointerDown={(event) => resizeCrop(corner, event)}
+                  className={`absolute size-5 rounded-full border-2 border-white bg-accent shadow ${positionClass}`}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+      <div className="p-3 text-sm">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="font-semibold">Page {page.page_number}</p>
+            {page.original_filename ? (
+              <p className="mt-1 truncate text-muted" title={page.original_filename}>
+                {page.original_filename}
+              </p>
+            ) : (
+              <p className="mt-1 text-muted">PDF page requiring OCR</p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setBaseCrop(cropFromPage(page));
+              setCrop(fullCrop());
+              setError(null);
+              setEditing((current) => !current);
+            }}
+            className="shrink-0 rounded-lg border border-border px-3 py-2 font-semibold hover:bg-[#f4f1e9]"
+          >
+            {editing ? "Close" : "Crop"}
+          </button>
+        </div>
+
+        {editing && (
+          <div className="mt-4 space-y-3">
+            <p className="text-muted">
+              Drag the box to move it. Drag a corner to resize it.
+            </p>
+            <div className="flex flex-wrap gap-2 pt-1">
+              <button
+                type="button"
+                disabled={saving || !cropIsValid}
+                onClick={() => void saveCrop()}
+                className="rounded-lg bg-accent px-4 py-2 font-semibold text-white hover:bg-accent-dark disabled:opacity-60"
+              >
+                {saving ? "Saving..." : "Save crop"}
+              </button>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => {
+                  setBaseCrop(fullCrop());
+                  setCrop(fullCrop());
+                  setError(null);
+                }}
+                className="rounded-lg border border-border px-4 py-2 font-semibold hover:bg-[#f4f1e9] disabled:opacity-60"
+              >
+                Reset
+              </button>
+            </div>
+            {error && (
+              <p role="alert" className="rounded-lg bg-[#fff3f1] p-3 text-[#783a33]">
+                {error}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    </li>
+  );
+}
+
 function UploadResultCard({
   result,
   libraryDocumentTitle,
   cardRef,
+  onPageCropped,
 }: {
   result: UploadResult;
   libraryDocumentTitle?: string;
   cardRef: React.RefObject<HTMLElement | null>;
+  onPageCropped: (result: PageCropResult) => void;
 }) {
   const ocrPages = result.pages.filter((page) => page.extraction_method === "ocr");
 
@@ -398,30 +771,12 @@ function UploadResultCard({
           </p>
           <ol className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {ocrPages.map((page) => (
-              <li
+              <PreparedPageCropCard
                 key={page.page_id}
-                className="overflow-hidden rounded-xl border border-[#cbded1] bg-white"
-              >
-                <div className="relative aspect-[3/4] bg-[#eeece5]">
-                  <Image
-                    src={preparedPageImageUrl(result.book_id, page.page_number)}
-                    alt={`Prepared preview of page ${page.page_number}`}
-                    fill
-                    unoptimized
-                    className="object-contain"
-                  />
-                </div>
-                <div className="p-3 text-sm">
-                  <p className="font-semibold">Page {page.page_number}</p>
-                  {page.original_filename ? (
-                    <p className="mt-1 truncate text-muted" title={page.original_filename}>
-                      {page.original_filename}
-                    </p>
-                  ) : (
-                    <p className="mt-1 text-muted">PDF page requiring OCR</p>
-                  )}
-                </div>
-              </li>
+                documentId={result.book_id}
+                page={page}
+                onPageCropped={onPageCropped}
+              />
             ))}
           </ol>
         </div>
@@ -675,6 +1030,28 @@ export function DocumentUpload({
     }
   }
 
+  function applySavedCrop(saved: PageCropResult) {
+    setResult((current) => {
+      if (!current) return current;
+      const updatePage = <Page extends UploadPageResult>(page: Page): Page =>
+        page.page_number === saved.page_number
+          ? {
+              ...page,
+              crop_left: saved.crop_left,
+              crop_top: saved.crop_top,
+              crop_right: saved.crop_right,
+              crop_bottom: saved.crop_bottom,
+              processed_image_path: saved.processed_image_path,
+            } as Page
+          : page;
+
+      if (current.source_type === "pdf") {
+        return { ...current, pages: current.pages.map(updatePage) };
+      }
+      return { ...current, pages: current.pages.map(updatePage) };
+    });
+  }
+
   return (
     <div>
       {libraryDocumentTitle && (
@@ -910,6 +1287,7 @@ export function DocumentUpload({
           result={result}
           libraryDocumentTitle={libraryDocumentTitle}
           cardRef={resultCardRef}
+          onPageCropped={applySavedCrop}
         />
       )}
 

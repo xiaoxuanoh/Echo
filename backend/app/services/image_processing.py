@@ -27,7 +27,7 @@ class ImageProcessingService:
     paper_min_value = 160
     paper_max_saturation = 65
     paper_axis_coverage = 0.30
-    crop_padding_ratio = 0.10
+    crop_padding_ratio = 0.04
     min_crop_axis_ratio = 0.35
     min_crop_area_ratio = 0.40
 
