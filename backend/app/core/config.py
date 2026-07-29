@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     azure_speech_region: str = ""
     azure_speech_voice: str = "zh-HK-HiuMaanNeural"
     edge_tts_voice: str = "zh-CN-XiaoxiaoNeural"
+    ffmpeg_path: str = "ffmpeg"
     ocr_enabled: bool = False
     ocr_text_detection_model: str = "PP-OCRv5_mobile_det"
     ocr_text_recognition_model: str = "PP-OCRv5_mobile_rec"

@@ -70,6 +70,10 @@ function installLocalStorageStub() {
   });
 }
 
+async function selectReadyFolder() {
+  fireEvent.click(await screen.findByRole("button", { name: /Ready upload/ }));
+}
+
 describe("document library", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn());
@@ -96,11 +100,18 @@ describe("document library", () => {
 
     render(<DocumentLibrary />);
 
-    expect(await screen.findAllByText("Ready upload")).toHaveLength(2);
+    expect(await screen.findByText("Select a folder to start")).toBeVisible();
+    expect(screen.getByText(/Choose a saved upload/)).toBeVisible();
+    expect(screen.queryByRole("link", { name: "Open ready.pdf" })).not.toBeInTheDocument();
+
+    await selectReadyFolder();
+
+    expect(screen.getAllByText("Ready upload")).toHaveLength(2);
     expect(screen.getByText(/2 recordings · 3 pages/)).toBeVisible();
     expect(screen.getAllByText("Cantonese")).toHaveLength(2);
     expect(screen.getByText("2 recordings")).toBeVisible();
     expect(screen.getByText("Recording 2")).toBeVisible();
+    expect(screen.getAllByText(/added Jul 22/)).toHaveLength(2);
     expect(screen.getByText(/Saved at segment 2/)).toBeVisible();
     expect(screen.getByRole("link", { name: "Open ready.pdf" })).toHaveAttribute(
       "href",
@@ -114,6 +125,58 @@ describe("document library", () => {
       "href",
       "/books/new?folderId=folder-id&folderTitle=Ready+upload",
     );
+    expect(screen.getByRole("button", { name: "Download all" })).toBeEnabled();
+  });
+
+  it("asks how to download all ready recordings in a folder", async () => {
+    const openMock = vi.spyOn(window, "open").mockImplementation(() => null);
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({ folders: [readyFolder] }),
+    );
+
+    render(<DocumentLibrary />);
+
+    await selectReadyFolder();
+    fireEvent.click(screen.getByRole("button", { name: "Download all" }));
+
+    expect(
+      screen.getByRole("dialog", {
+        name: "How do you want to download this upload?",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("link", {
+        name: /Combine and downloadCreates one audio file/,
+      }),
+    ).toHaveAttribute(
+      "href",
+      "http://localhost:8001/api/books/folders/folder-id/audio/download",
+    );
+    expect(screen.getByText("Creates one audio file, oldest recording first.")).toBeVisible();
+    expect(
+      screen.getByText("Keeps each ready recording as a separate download."),
+    ).toBeVisible();
+    fireEvent.mouseDown(
+      screen.getByRole("dialog", {
+        name: "How do you want to download this upload?",
+      }),
+    );
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Download all" }));
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /Download individuallyKeeps each ready recording/,
+      }),
+    );
+
+    expect(openMock).toHaveBeenCalledTimes(1);
+    expect(openMock).toHaveBeenCalledWith(
+      "http://localhost:8001/api/books/ready-book/audio/download",
+      "_blank",
+    );
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("offers upload when the local library is empty", async () => {
@@ -137,6 +200,7 @@ describe("document library", () => {
 
     render(<DocumentLibrary />);
 
+    await selectReadyFolder();
     fireEvent.click(await screen.findByRole("button", { name: "Document actions" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Rename saved upload" }));
     const input = await screen.findByLabelText("Saved upload name");
@@ -153,6 +217,7 @@ describe("document library", () => {
 
     render(<DocumentLibrary />);
 
+    await selectReadyFolder();
     fireEvent.click(await screen.findByRole("button", { name: "Document actions" }));
     expect(screen.getByRole("menuitem", { name: "Rename saved upload" })).toBeVisible();
     fireEvent.mouseDown(screen.getByText("ready.pdf"));
@@ -181,6 +246,7 @@ describe("document library", () => {
 
     render(<DocumentLibrary />);
 
+    await selectReadyFolder();
     fireEvent.click(await screen.findByRole("button", { name: "ready.pdf actions" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Rename recording" }));
     const input = screen.getByLabelText("Recording name");
@@ -197,6 +263,7 @@ describe("document library", () => {
 
     render(<DocumentLibrary />);
 
+    await selectReadyFolder();
     fireEvent.click(await screen.findByRole("button", { name: "ready.pdf actions" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Rename recording" }));
     const input = screen.getByLabelText("Recording name");
@@ -216,6 +283,7 @@ describe("document library", () => {
 
     render(<DocumentLibrary />);
 
+    await selectReadyFolder();
     fireEvent.click(await screen.findByRole("button", { name: "Document actions" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Remove saved upload" }));
 
@@ -233,6 +301,7 @@ describe("document library", () => {
 
     render(<DocumentLibrary />);
 
+    await selectReadyFolder();
     fireEvent.click(await screen.findByRole("button", { name: "ready.pdf actions" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Remove recording" }));
 

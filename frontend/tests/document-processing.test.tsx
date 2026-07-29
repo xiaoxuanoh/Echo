@@ -3,6 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DocumentProcessing } from "@/components/documents/document-processing";
 
+const pushMock = vi.hoisted(() => vi.fn());
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: pushMock,
+  }),
+}));
 
 const uploadedDocument = {
   id: "document-id",
@@ -63,7 +70,10 @@ function jsonResponse(body: object, status = 200) {
 }
 
 describe("document text preparation", () => {
-  beforeEach(() => vi.stubGlobal("fetch", vi.fn()));
+  beforeEach(() => {
+    pushMock.mockReset();
+    vi.stubGlobal("fetch", vi.fn());
+  });
 
   afterEach(() => {
     cleanup();
@@ -127,6 +137,26 @@ describe("document text preparation", () => {
     expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: "POST" });
     expect(fetchMock.mock.calls[3][0]).toContain("/prepare-audio");
     expect(fetchMock.mock.calls[3][1]).toMatchObject({ method: "POST" });
+  });
+
+  it("restarts the review by removing the upload and returning to upload", async () => {
+    const confirmMock = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(uploadedDocument))
+      .mockResolvedValueOnce(jsonResponse({ message: "removed" }));
+
+    render(<DocumentProcessing documentId="document-id" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Restart" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(confirmMock).toHaveBeenCalledWith(
+      'Restart this upload? Echo will remove "My document" from your library.',
+    );
+    expect(fetchMock.mock.calls[1][0]).toBe("http://localhost:8001/api/books/document-id");
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: "DELETE" });
+    expect(pushMock).toHaveBeenCalledWith("/books/new");
   });
 
   it("starts audio directly from the prepared text state", async () => {

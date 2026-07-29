@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 import {
+  deleteDocumentRecording,
   getDocument,
   getDocumentAudio,
   prepareDocumentAudio,
@@ -56,6 +58,7 @@ const textProcessingStatuses = new Set<DocumentProcessingStatus>([
 ]);
 
 export function DocumentProcessing({ documentId }: { documentId: string }) {
+  const router = useRouter();
   const [document, setDocument] = useState<DocumentDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState(false);
@@ -185,6 +188,31 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
     }
   }, [documentId, refresh]);
 
+  const restartUpload = useCallback(async () => {
+    if (!document) return;
+    if (
+      !window.confirm(
+        `Restart this upload? Echo will remove "${document.title}" from your library.`,
+      )
+    ) {
+      return;
+    }
+
+    setActing(true);
+    setError(null);
+    try {
+      await deleteDocumentRecording(documentId);
+      router.push("/books/new");
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Echo could not restart this upload.",
+      );
+      setActing(false);
+    }
+  }, [document, documentId, router]);
+
   if (loading) {
     return <p className="mt-10 text-lg text-muted">Loading your document...</p>;
   }
@@ -251,24 +279,34 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
             </h1>
             <p className="mt-1 text-muted">{progressLabel}</p>
           </div>
-          {document.processing_status === "ready" ? (
-            <Link
-              href={`/books/${document.id}/listen`}
-              className="inline-flex min-h-12 items-center rounded-xl bg-accent px-6 py-3 font-semibold text-white shadow-sm transition-colors duration-150 hover:bg-accent-dark"
-            >
-              Listen now
-            </Link>
-          ) : (
+          <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
-              disabled={listenNowDisabled}
-              onClick={() => void startAudio()}
-              className="min-h-12 rounded-xl bg-accent px-6 py-3 font-semibold text-white shadow-sm transition-colors duration-150 hover:bg-accent-dark disabled:cursor-not-allowed disabled:border disabled:border-border disabled:bg-[#edf1f0] disabled:text-muted disabled:shadow-none"
-              aria-describedby={isPreparingText ? "listen-now-waiting" : undefined}
+              disabled={acting}
+              onClick={() => void restartUpload()}
+              className="min-h-12 rounded-xl border border-[#d9b9b4] px-6 py-3 font-semibold text-[#783a33] transition-colors duration-150 hover:bg-[#fff3f1] disabled:cursor-wait disabled:opacity-60"
             >
-              Listen now
+              {acting ? "Restarting..." : "Restart"}
             </button>
-          )}
+            {document.processing_status === "ready" ? (
+              <Link
+                href={`/books/${document.id}/listen`}
+                className="inline-flex min-h-12 items-center rounded-xl bg-accent px-6 py-3 font-semibold text-white shadow-sm transition-colors duration-150 hover:bg-accent-dark"
+              >
+                Listen now
+              </Link>
+            ) : (
+              <button
+                type="button"
+                disabled={listenNowDisabled}
+                onClick={() => void startAudio()}
+                className="min-h-12 rounded-xl bg-accent px-6 py-3 font-semibold text-white shadow-sm transition-colors duration-150 hover:bg-accent-dark disabled:cursor-not-allowed disabled:border disabled:border-border disabled:bg-[#edf1f0] disabled:text-muted disabled:shadow-none"
+                aria-describedby={isPreparingText ? "listen-now-waiting" : undefined}
+              >
+                Listen now
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="mt-7 h-3 overflow-hidden rounded-full bg-[#e7e5dd]">

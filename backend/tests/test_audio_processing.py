@@ -1,12 +1,15 @@
 from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
+import subprocess
 from uuid import uuid4
 from zipfile import ZipFile
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings
+from app.api.routes.books import _resolve_ffmpeg_path
 from app.main import create_app
 from app.models.documents import DocumentPageRecord
 from app.services.document_metadata import LocalDocumentMetadataService
@@ -337,6 +340,98 @@ def test_downloads_ready_recording_audio_as_zip(client: TestClient) -> None:
         assert archive.namelist() == ["part-001.wav", "part-002.wav"]
         assert archive.read("part-001.wav").startswith(b"RIFF")
         assert archive.read("part-002.wav").startswith(b"RIFF")
+
+
+def test_downloads_ready_folder_audio_as_one_mp3_file(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ffmpeg_commands: list[list[str]] = []
+    ffmpeg_input_lists: list[str] = []
+
+    def fake_run(
+        command: list[str],
+        *,
+        check: bool,
+        capture_output: bool,
+        text: bool,
+    ) -> subprocess.CompletedProcess[str]:
+        ffmpeg_commands.append(command)
+        ffmpeg_input_lists.append(Path(command[10]).read_text(encoding="utf-8"))
+        Path(command[-1]).write_bytes(b"ID3 combined audio")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr("app.api.routes.books.subprocess.run", fake_run)
+    first = client.post(
+        "/api/books/pdf",
+        files={
+            "file": (
+                "chapter-one.pdf",
+                make_pdf(["First playable page."]),
+                "application/pdf",
+            )
+        },
+    ).json()
+    second = client.post(
+        "/api/books/pdf",
+        data={"library_book_id": first["book_id"]},
+        files={
+            "file": (
+                "chapter-two.pdf",
+                make_pdf(["Second playable page."]),
+                "application/pdf",
+            )
+        },
+    ).json()
+    client.post(f"/api/books/{first['book_id']}/process-text")
+    client.post(f"/api/books/{first['book_id']}/prepare-audio")
+    client.post(f"/api/books/{second['book_id']}/process-text")
+    client.post(f"/api/books/{second['book_id']}/prepare-audio")
+
+    response = client.get(f"/api/books/folders/{first['book_id']}/audio/download")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "audio/mpeg"
+    assert (
+        response.headers["content-disposition"]
+        == 'attachment; filename="chapter-one.mp3"'
+    )
+    assert response.content == b"ID3 combined audio"
+    assert len(ffmpeg_commands) == 1
+    assert ffmpeg_input_lists[0].index(first["book_id"]) < ffmpeg_input_lists[0].index(
+        second["book_id"],
+    )
+    assert Path(ffmpeg_commands[0][0]).name == "ffmpeg"
+    assert ffmpeg_commands[0][1:10] == [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+    ]
+    assert ffmpeg_commands[0][-6:-1] == [
+        "-vn",
+        "-acodec",
+        "libmp3lame",
+        "-q:a",
+        "2",
+    ]
+
+
+def test_resolves_homebrew_ffmpeg_when_server_path_is_sparse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("app.api.routes.books.shutil.which", lambda _: None)
+    monkeypatch.setattr(
+        "app.api.routes.books.Path.exists",
+        lambda path: str(path) == "/opt/homebrew/bin/ffmpeg",
+    )
+
+    assert _resolve_ffmpeg_path("ffmpeg") == "/opt/homebrew/bin/ffmpeg"
 
 
 def test_rejects_audio_before_text_is_ready(client: TestClient) -> None:

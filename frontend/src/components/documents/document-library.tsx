@@ -6,9 +6,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   deleteDocumentFolder,
   deleteDocumentRecording,
+  folderAudioDownloadUrl,
   getDocumentLibrary,
   renameDocumentFolder,
   renameDocumentRecording,
+  recordingAudioDownloadUrl,
 } from "@/lib/api";
 import { languageSummary } from "@/lib/listening-languages";
 import type {
@@ -85,6 +87,13 @@ function uploadMoreHref(folder: DocumentLibraryFolder): string {
   return `/books/new?${params.toString()}`;
 }
 
+function downloadableRecordings(folder: DocumentLibraryFolder): DocumentLibraryItem[] {
+  return folder.recordings.filter(
+    (recording) =>
+      recording.processing_status === "ready" && recording.audio_segment_count > 0,
+  );
+}
+
 export function DocumentLibrary() {
   const openMenuRef = useRef<HTMLDivElement | null>(null);
   const selectedFolderIdRef = useRef<string | null>(null);
@@ -98,6 +107,7 @@ export function DocumentLibrary() {
   const [renaming, setRenaming] = useState(false);
   const [renamingRecordingId, setRenamingRecordingId] = useState<string | null>(null);
   const [recordingRenameValue, setRecordingRenameValue] = useState("");
+  const [downloadChoicesOpen, setDownloadChoicesOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -112,7 +122,6 @@ export function DocumentLibrary() {
       const library = await getDocumentLibrary();
       const nextSelectedFolder =
         library.folders.find((folder) => folder.id === selectedFolderIdRef.current) ??
-        library.folders[0] ??
         null;
       setFolders(library.folders);
       selectedFolderIdRef.current = nextSelectedFolder?.id ?? null;
@@ -122,6 +131,7 @@ export function DocumentLibrary() {
       setRenaming(false);
       setRenamingRecordingId(null);
       setRecordingRenameValue("");
+      setDownloadChoicesOpen(false);
       setProgressByRecording(
         Object.fromEntries(
           library.folders.flatMap((folder) =>
@@ -298,6 +308,7 @@ export function DocumentLibrary() {
                   setRenaming(false);
                   setRenamingRecordingId(null);
                   setRecordingRenameValue("");
+                  setDownloadChoicesOpen(false);
                 }}
                 className={`w-full rounded-xl border p-4 text-left transition ${
                   isSelected
@@ -327,8 +338,66 @@ export function DocumentLibrary() {
         </div>
       </section>
 
-      {selectedFolder && (
+      {selectedFolder ? (
         <section className="rounded-2xl border border-border bg-surface p-5 shadow-[0_14px_40px_rgba(48,55,61,0.05)] lg:sticky lg:top-6 lg:max-h-[calc(100vh-48px)] lg:overflow-y-auto">
+          {downloadChoicesOpen && (
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="download-all-title"
+              onMouseDown={() => setDownloadChoicesOpen(false)}
+              className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(18,24,31,0.28)] p-4"
+            >
+              <div
+                onMouseDown={(event) => event.stopPropagation()}
+                className="w-full max-w-md rounded-2xl border border-border bg-white p-5 shadow-[0_24px_70px_rgba(48,55,61,0.22)]"
+              >
+                <h2 id="download-all-title" className="text-xl font-semibold">
+                  How do you want to download this upload?
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-muted">
+                  Choose one format for all ready recordings in {selectedFolder.title}.
+                </p>
+                <div className="mt-5 grid gap-3">
+                  <a
+                    href={folderAudioDownloadUrl(selectedFolder.id)}
+                    download
+                    onClick={() => setDownloadChoicesOpen(false)}
+                    className="rounded-xl border border-accent bg-[#edf4f7] p-4 text-left hover:bg-[#e0eff4]"
+                  >
+                    <span className="block font-semibold text-accent">
+                      Combine and download
+                    </span>
+                    <span className="mt-1 block text-sm leading-6 text-muted">
+                      Creates one audio file, oldest recording first.
+                    </span>
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      for (const recording of downloadableRecordings(selectedFolder)) {
+                        window.open(recordingAudioDownloadUrl(recording.id), "_blank");
+                      }
+                      setDownloadChoicesOpen(false);
+                    }}
+                    className="rounded-xl border border-border p-4 text-left hover:bg-[#f8f6f0]"
+                  >
+                    <span className="block font-semibold">Download individually</span>
+                    <span className="mt-1 block text-sm leading-6 text-muted">
+                      Keeps each ready recording as a separate download.
+                    </span>
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDownloadChoicesOpen(false)}
+                  className="mt-4 min-h-10 rounded-lg border border-border px-4 font-semibold hover:bg-[#f8f6f0]"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="text-sm font-bold text-accent">
@@ -346,6 +415,17 @@ export function DocumentLibrary() {
               </p>
             </div>
             <div className="flex items-start gap-2">
+              <button
+                type="button"
+                disabled={downloadableRecordings(selectedFolder).length === 0}
+                onClick={() => {
+                  setOpenMenu(null);
+                  setDownloadChoicesOpen(true);
+                }}
+                className="inline-flex min-h-11 items-center justify-center rounded-lg border border-accent px-4 font-semibold text-accent hover:bg-[#edf4f7] disabled:cursor-not-allowed disabled:border-border disabled:text-muted disabled:hover:bg-transparent"
+              >
+                Download all
+              </button>
               <Link
                 href={uploadMoreHref(selectedFolder)}
                 className="inline-flex min-h-11 items-center justify-center rounded-lg bg-accent px-4 font-semibold text-white hover:bg-accent-dark"
@@ -368,7 +448,7 @@ export function DocumentLibrary() {
               {openMenu === "document" && (
                 <div
                   role="menu"
-                  className="absolute right-0 z-10 mt-2 w-44 rounded-xl border border-border bg-white p-2 shadow-[0_14px_35px_rgba(48,55,61,0.12)]"
+                  className="absolute right-0 z-50 mt-2 w-44 rounded-xl border border-border bg-white p-2 shadow-[0_14px_35px_rgba(48,55,61,0.12)]"
                 >
                   <button
                     type="button"
@@ -469,6 +549,7 @@ export function DocumentLibrary() {
                         {recording.total_pages === 1 ? "" : "s"} ·{" "}
                         {recording.audio_segment_count} audio segment
                         {recording.audio_segment_count === 1 ? "" : "s"} ·{" "}
+                        added {formatDate(recording.created_at)} ·{" "}
                         {progressText}
                       </p>
                     </div>
@@ -477,7 +558,7 @@ export function DocumentLibrary() {
                       aria-label={`Open ${recordingLabel(recording, index)}`}
                       className="absolute inset-0 rounded-xl focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2"
                     />
-                    <div className="relative z-10 flex items-start">
+                    <div className="relative z-20 flex items-start">
                       <div
                         className="relative"
                         ref={
@@ -505,7 +586,7 @@ export function DocumentLibrary() {
                         {openMenu === `recording:${recording.id}` && (
                           <div
                             role="menu"
-                            className="absolute right-0 z-10 mt-2 w-48 rounded-xl border border-border bg-white p-2 shadow-[0_14px_35px_rgba(48,55,61,0.12)]"
+                            className="absolute right-0 bottom-full z-50 mb-2 w-48 rounded-xl border border-border bg-white p-2 shadow-[0_14px_35px_rgba(48,55,61,0.12)]"
                           >
                             <button
                               type="button"
@@ -580,6 +661,15 @@ export function DocumentLibrary() {
               );
             })}
           </ol>
+        </section>
+      ) : (
+        <section className="flex min-h-64 items-center justify-center rounded-2xl border border-dashed border-border bg-surface p-8 text-center shadow-[0_14px_40px_rgba(48,55,61,0.04)]">
+          <div>
+            <h2 className="text-2xl font-semibold">Select a folder to start</h2>
+            <p className="mt-2 max-w-md leading-7 text-muted">
+              Choose a saved upload from the library list to see its recordings and actions.
+            </p>
+          </div>
         </section>
       )}
     </div>

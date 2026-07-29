@@ -154,6 +154,10 @@ export function recordingAudioDownloadUrl(documentId: string): string {
   return `${API_BASE_URL}/api/books/${documentId}/audio/download`;
 }
 
+export function folderAudioDownloadUrl(folderId: string): string {
+  return `${API_BASE_URL}/api/books/folders/${folderId}/audio/download`;
+}
+
 export function preparedPageImageUrl(documentId: string, pageNumber: number): string {
   return `${API_BASE_URL}/api/books/${documentId}/pages/${pageNumber}/image`;
 }

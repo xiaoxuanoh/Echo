@@ -1,5 +1,7 @@
 import json
 import shutil
+import subprocess
+import tempfile
 import zipfile
 from io import BytesIO
 from datetime import UTC, datetime
@@ -20,7 +22,7 @@ from fastapi import (
 from fastapi.responses import FileResponse, Response
 
 from app.core.errors import EchoError
-from app.models.documents import DocumentPageRecord, DocumentRecord
+from app.models.documents import AudioSegmentRecord, DocumentPageRecord, DocumentRecord
 from app.schemas.documents import (
     AudioProcessingAccepted,
     AudioSegmentResult,
@@ -307,8 +309,8 @@ def _folder_recordings(storage_root: Path, folder_id: UUID) -> list[DocumentReco
             "Echo could not find that local upload folder.",
             status_code=404,
         )
-    recording_ids = {recording.id for recording in folder.recordings}
-    return [book for book in books if book.id in recording_ids]
+    books_by_id = {book.id: book for book in books}
+    return [books_by_id[recording.id] for recording in folder.recordings]
 
 
 def _target_library_folder(storage_root: Path, folder_id: UUID) -> DocumentLibraryFolderResult:
@@ -322,6 +324,161 @@ def _target_library_folder(storage_root: Path, folder_id: UUID) -> DocumentLibra
             status_code=404,
         )
     return folder
+
+
+def _ready_audio_segments(book: DocumentRecord) -> list[AudioSegmentRecord]:
+    return [
+        segment
+        for segment in sorted(book.audio_segments, key=lambda item: item.segment_number)
+        if segment.processing_status == "completed" and segment.audio_storage_path is not None
+    ]
+
+
+def _write_recording_audio(
+    zip_file: zipfile.ZipFile,
+    *,
+    book_directory: Path,
+    book: DocumentRecord,
+    archive_directory: str | None = None,
+) -> int:
+    book_root = book_directory.resolve()
+    ready_segments = _ready_audio_segments(book)
+    for segment in ready_segments:
+        audio_path = (book_directory / str(segment.audio_storage_path)).resolve()
+        if not audio_path.is_relative_to(book_root):
+            raise EchoError(
+                "audio_path_invalid",
+                "The audio file path is invalid.",
+                status_code=500,
+            )
+        if not audio_path.exists():
+            raise EchoError(
+                "audio_file_missing",
+                "Echo could not find one of the local audio files.",
+                status_code=404,
+            )
+        extension = audio_path.suffix or ".wav"
+        filename = f"part-{segment.segment_number:03d}{extension}"
+        arcname = f"{archive_directory}/{filename}" if archive_directory else filename
+        zip_file.write(audio_path, arcname=arcname)
+    return len(ready_segments)
+
+
+def _recording_audio_paths(
+    *,
+    book_directory: Path,
+    book: DocumentRecord,
+) -> list[Path]:
+    book_root = book_directory.resolve()
+    audio_paths: list[Path] = []
+    for segment in _ready_audio_segments(book):
+        audio_path = (book_directory / str(segment.audio_storage_path)).resolve()
+        if not audio_path.is_relative_to(book_root):
+            raise EchoError(
+                "audio_path_invalid",
+                "The audio file path is invalid.",
+                status_code=500,
+            )
+        if not audio_path.exists():
+            raise EchoError(
+                "audio_file_missing",
+                "Echo could not find one of the local audio files.",
+                status_code=404,
+            )
+        audio_paths.append(audio_path)
+    return audio_paths
+
+
+def _ffmpeg_concat_line(audio_path: Path) -> str:
+    escaped_path = str(audio_path).replace("'", "'\\''")
+    return f"file '{escaped_path}'"
+
+
+def _resolve_ffmpeg_path(ffmpeg_path: str) -> str:
+    configured_path = ffmpeg_path.strip() or "ffmpeg"
+    if "/" in configured_path:
+        return configured_path
+    resolved_path = shutil.which(configured_path)
+    if resolved_path is not None:
+        return resolved_path
+    for fallback_path in (
+        Path("/opt/homebrew/bin") / configured_path,
+        Path("/usr/local/bin") / configured_path,
+    ):
+        if fallback_path.exists():
+            return str(fallback_path)
+    return configured_path
+
+
+def _combine_audio_with_ffmpeg(
+    audio_paths: list[Path],
+    *,
+    ffmpeg_path: str,
+) -> bytes:
+    if not audio_paths:
+        raise EchoError(
+            "audio_not_found",
+            "Echo could not find audio to download for this upload.",
+            status_code=404,
+        )
+
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        temporary_path = Path(temporary_directory)
+        list_path = temporary_path / "inputs.txt"
+        output_path = temporary_path / "combined.mp3"
+        list_path.write_text(
+            "\n".join(_ffmpeg_concat_line(audio_path) for audio_path in audio_paths),
+            encoding="utf-8",
+        )
+        command = [
+            _resolve_ffmpeg_path(ffmpeg_path),
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            str(list_path),
+            "-vn",
+            "-acodec",
+            "libmp3lame",
+            "-q:a",
+            "2",
+            str(output_path),
+        ]
+        try:
+            subprocess.run(command, check=True, capture_output=True, text=True)
+        except FileNotFoundError as error:
+            raise EchoError(
+                "ffmpeg_missing",
+                "Echo needs ffmpeg installed before it can combine audio into one file.",
+                status_code=500,
+            ) from error
+        except subprocess.CalledProcessError as error:
+            raise EchoError(
+                "combined_audio_failed",
+                "Echo could not combine these recordings into one audio file.",
+                status_code=500,
+                details={"reason": error.stderr[-500:] if error.stderr else ""},
+            ) from error
+
+        if not output_path.exists():
+            raise EchoError(
+                "combined_audio_missing",
+                "Echo could not find the combined audio file.",
+                status_code=500,
+            )
+        combined_audio = output_path.read_bytes()
+        if not combined_audio:
+            raise EchoError(
+                "combined_audio_empty",
+                "Echo created an empty combined audio file.",
+                status_code=500,
+            )
+        return combined_audio
 
 
 def _audio_result(
@@ -929,6 +1086,37 @@ def delete_book_folder(request: Request, folder_id: UUID) -> DocumentMutationRes
     return DocumentMutationResult(message="Echo removed this local upload.")
 
 
+@router.get("/folders/{folder_id}/audio/download")
+def download_folder_audio(request: Request, folder_id: UUID) -> Response:
+    settings = request.app.state.settings
+    recordings = sorted(
+        _folder_recordings(settings.local_storage_path, folder_id),
+        key=lambda recording: recording.created_at,
+    )
+    audio_paths = [
+        audio_path
+        for recording in recordings
+        for audio_path in _recording_audio_paths(
+            book_directory=settings.local_storage_path / str(recording.id),
+            book=recording,
+        )
+    ]
+
+    folder = _target_library_folder(settings.local_storage_path, folder_id)
+    combined_audio = _combine_audio_with_ffmpeg(
+        audio_paths,
+        ffmpeg_path=settings.ffmpeg_path,
+    )
+    filename = _download_filename(folder.title, "echo-upload-audio")
+    return Response(
+        content=combined_audio,
+        media_type="audio/mpeg",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}.mp3"',
+        },
+    )
+
+
 @router.delete("/{book_id}", response_model=DocumentMutationResult)
 def delete_recording(request: Request, book_id: UUID) -> DocumentMutationResult:
     settings = request.app.state.settings
@@ -1057,13 +1245,7 @@ def download_recording_audio(request: Request, book_id: UUID) -> Response:
     settings = request.app.state.settings
     book_directory = settings.local_storage_path / str(book_id)
     book = LocalDocumentMetadataService().load(book_directory)
-    book_root = book_directory.resolve()
-    ready_segments = [
-        segment
-        for segment in sorted(book.audio_segments, key=lambda item: item.segment_number)
-        if segment.processing_status == "completed" and segment.audio_storage_path is not None
-    ]
-    if not ready_segments:
+    if not _ready_audio_segments(book):
         raise EchoError(
             "audio_not_found",
             "Echo could not find audio to download for this recording.",
@@ -1072,25 +1254,7 @@ def download_recording_audio(request: Request, book_id: UUID) -> Response:
 
     archive = BytesIO()
     with zipfile.ZipFile(archive, mode="w", compression=zipfile.ZIP_DEFLATED) as zip_file:
-        for segment in ready_segments:
-            audio_path = (book_directory / str(segment.audio_storage_path)).resolve()
-            if not audio_path.is_relative_to(book_root):
-                raise EchoError(
-                    "audio_path_invalid",
-                    "The audio file path is invalid.",
-                    status_code=500,
-                )
-            if not audio_path.exists():
-                raise EchoError(
-                    "audio_file_missing",
-                    "Echo could not find one of the local audio files.",
-                    status_code=404,
-                )
-            extension = audio_path.suffix or ".wav"
-            zip_file.write(
-                audio_path,
-                arcname=f"part-{segment.segment_number:03d}{extension}",
-            )
+        _write_recording_audio(zip_file, book_directory=book_directory, book=book)
 
     filename = _download_filename(
         book.recording_title or book.original_filename or book.title,
