@@ -24,10 +24,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.state.document_job_registry = LocalDocumentJobRegistry()
     application.add_middleware(
         CORSMiddleware,
-        allow_origins=[active_settings.frontend_origin],
+        allow_origins=active_settings.allowed_frontend_origins,
         allow_credentials=False,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-        allow_headers=["Content-Type"],
+        allow_headers=["Authorization", "Content-Type"],
     )
 
     @application.exception_handler(EchoError)

@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     app_name: str = "Echo"
     app_env: str = "development"
     frontend_origin: str = "http://localhost:3001"
+    frontend_origins: str = ""
     local_storage_path: Path = Path("./data")
     use_mock_ocr: bool = True
     use_mock_tts: bool = True
@@ -53,6 +54,15 @@ class Settings(BaseSettings):
     @property
     def max_image_size_bytes(self) -> int:
         return self.max_image_size_mb * 1024 * 1024
+
+    @property
+    def allowed_frontend_origins(self) -> list[str]:
+        raw_origins = self.frontend_origins or self.frontend_origin
+        return [
+            origin.strip().rstrip("/")
+            for origin in raw_origins.split(",")
+            if origin.strip()
+        ]
 
 
 @lru_cache
