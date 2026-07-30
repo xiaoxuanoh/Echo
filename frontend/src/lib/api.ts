@@ -14,6 +14,8 @@ import type { ListeningLanguage } from "@/lib/listening-languages";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8001";
+const IMAGE_UPLOAD_MAX_SIDE = 1800;
+const IMAGE_UPLOAD_JPEG_QUALITY = 0.78;
 
 type ApiErrorBody = {
   error?: { message?: string };
@@ -240,6 +242,53 @@ type UploadOptions = {
   targetLanguage?: ListeningLanguage;
 };
 
+async function compressedPageImage(file: File): Promise<File> {
+  if (!file.type.startsWith("image/")) return file;
+
+  const imageUrl = URL.createObjectURL(file);
+  try {
+    const image = new Image();
+    const loaded = new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error("Echo could not prepare this page photo."));
+    });
+    image.src = imageUrl;
+    await loaded;
+
+    const scale = Math.min(
+      1,
+      IMAGE_UPLOAD_MAX_SIDE / Math.max(image.naturalWidth, image.naturalHeight),
+    );
+    const width = Math.max(1, Math.round(image.naturalWidth * scale));
+    const height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) return file;
+    context.drawImage(image, 0, 0, width, height);
+
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", IMAGE_UPLOAD_JPEG_QUALITY),
+    );
+    if (!blob || blob.size >= file.size) return file;
+
+    return new File([blob], imageUploadFilename(file.name), {
+      type: "image/jpeg",
+      lastModified: file.lastModified,
+    });
+  } catch {
+    return file;
+  } finally {
+    URL.revokeObjectURL(imageUrl);
+  }
+}
+
+function imageUploadFilename(filename: string): string {
+  const stem = filename.replace(/\.[^/.]+$/, "") || "page";
+  return `${stem}.jpg`;
+}
+
 export async function uploadPdf(
   file: File,
   options: UploadOptions = {},
@@ -263,7 +312,9 @@ export async function uploadImages(
   options: UploadOptions = {},
 ): Promise<ImageUploadResult> {
   const formData = new FormData();
-  for (const page of pages) formData.append("files", page.file);
+  for (const page of pages) {
+    formData.append("files", await compressedPageImage(page.file));
+  }
   formData.append("rotations", JSON.stringify(pages.map((page) => page.rotation)));
   if (options.libraryDocumentId) {
     formData.append("library_book_id", options.libraryDocumentId);
