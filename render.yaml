@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: echo-backend
+    runtime: docker
+    plan: free
+    autoDeployTrigger: commit
+    dockerfilePath: backend/Dockerfile
+    dockerContext: backend
+    healthCheckPath: /health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: FRONTEND_ORIGIN
+        value: https://echo-two-pearl.vercel.app
+      - key: FRONTEND_ORIGINS
+        value: http://localhost:3001,https://echo-two-pearl.vercel.app
+      - key: SUPABASE_URL
+        value: https://zcfhwcsytihozdbuptsm.supabase.co
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_STORAGE_BUCKET_BOOKS
+        value: documents-source
+      - key: SUPABASE_STORAGE_BUCKET_PAGES
+        value: documents-pages
+      - key: SUPABASE_STORAGE_BUCKET_AUDIO
+        value: documents-audio
+      - key: USE_MOCK_TTS
+        value: true
+      - key: USE_MOCK_OCR
+        value: true
+      - key: OCR_ENABLED
+        value: false
