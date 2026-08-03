@@ -3,9 +3,9 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from PIL import Image
+from PIL import Image, ImageDraw
 
-from app.services.ocr import OcrLine, PaddleOcrProvider
+from app.services.ocr import OcrCropBand, OcrLine, PaddleOcrProvider
 from tests.test_uploads import image_bytes
 
 
@@ -273,6 +273,214 @@ def test_paddle_ocr_recovers_missing_first_body_line_from_enhanced_top_body_slic
     ]
 
 
+def test_paddle_ocr_detects_visual_text_bands_from_page_ink() -> None:
+    image = Image.new("RGB", (800, 1000), "white")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((140, 280, 760, 292), fill="black")
+    draw.rectangle((140, 322, 760, 334), fill="black")
+    full_lines = [
+        OcrLine(
+            text="甚至反向賺更多。因為白銀的跌勢更猛，於是買了SLV認",
+            confidence=0.98,
+            y_min=360,
+            x_min=140,
+            x_max=760,
+        )
+    ]
+
+    bands = PaddleOcrProvider._detect_visual_text_bands(image, full_lines)
+
+    assert len(bands) == 2
+    assert bands[0].top < 280 < bands[0].bottom
+    assert bands[1].top < 322 < bands[1].bottom
+    assert all(0 <= band.top < band.bottom <= 1000 for band in bands)
+
+
+def test_paddle_ocr_uses_visual_text_bands_for_first_body_recovery(
+    tmp_path: Path,
+) -> None:
+    image = Image.new("RGB", (800, 1000), "white")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((140, 280, 760, 292), fill="black")
+    draw.rectangle((140, 322, 760, 334), fill="black")
+    full_lines = [
+        OcrLine(
+            text="甚至反向賺更多。因為白銀的跌勢更猛，於是買了SLV認",
+            confidence=0.98,
+            y_min=360,
+            x_min=140,
+            x_max=760,
+        )
+    ]
+
+    class FakePipeline:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def predict(self, path: str) -> list[dict[str, object]]:
+            assert Path(path).is_file()
+            self.calls.append(Path(path).name)
+            return []
+
+    provider = PaddleOcrProvider(
+        text_detection_model="test-det",
+        text_recognition_model="test-rec",
+        max_image_side=1024,
+        cache_path=tmp_path / "cache",
+    )
+    pipeline = FakePipeline()
+    provider._pipeline = pipeline
+
+    provider._read_first_body_line_band_lines(image, full_lines)
+
+    assert pipeline.calls == [
+        "ocr-first-body-line-band-1.png",
+        "ocr-first-body-line-band-2.png",
+        "ocr-first-body-line-band-3.png",
+        "ocr-first-body-line-band-4.png",
+        "ocr-first-body-line-band-5.png",
+        "ocr-first-body-line-band-6.png",
+        "ocr-first-body-line-band-7.png",
+    ]
+
+
+def test_paddle_ocr_keeps_estimated_sweep_when_visual_bands_are_too_tight(
+    tmp_path: Path,
+) -> None:
+    image_path = tmp_path / "page.png"
+    image = Image.new("RGB", (800, 1000), "white")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((140, 220, 760, 232), fill="black")
+    draw.rectangle((140, 262, 760, 274), fill="black")
+    image.save(image_path)
+
+    class FakePipeline:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def predict(self, path: str) -> list[dict[str, object]]:
+            assert Path(path).is_file()
+            filename = Path(path).name
+            self.calls.append(filename)
+            if filename == "page.png":
+                return [
+                    {
+                        "rec_texts": [
+                            "沽期權的投資者更笑得合不攏嘴。【圖1.3】",
+                        ],
+                        "rec_scores": [0.96],
+                        "rec_boxes": [[140, 304, 760, 334]],
+                    }
+                ]
+            if filename == "ocr-first-body-line-band-4.png":
+                return [
+                    {
+                        "rec_texts": [
+                            "正浪潮中價值暴增，短短幾天就把前面的獲利再次鎖定，",
+                        ],
+                        "rec_scores": [0.94],
+                        "rec_boxes": [[400, 420, 3500, 500]],
+                    }
+                ]
+            if filename == "ocr-first-body-line-band-5.png":
+                return [
+                    {
+                        "rec_texts": [
+                            "甚至反向賺更多。因為白銀的跌勢更猛，於是買了SLV認",
+                        ],
+                        "rec_scores": [0.95],
+                        "rec_boxes": [[400, 500, 3500, 580]],
+                    }
+                ]
+            return []
+
+    provider = PaddleOcrProvider(
+        text_detection_model="test-det",
+        text_recognition_model="test-rec",
+        max_image_side=1024,
+        cache_path=tmp_path / "cache",
+    )
+    pipeline = FakePipeline()
+    provider._pipeline = pipeline
+
+    result = provider.read_page(image_path)
+
+    assert result.text.splitlines() == [
+        "正浪潮中價值暴增，短短幾天就把前面的獲利再次鎖定，",
+        "甚至反向賺更多。因為白銀的跌勢更猛，於是買了SLV認",
+        "沽期權的投資者更笑得合不攏嘴。【圖1.3】",
+    ]
+    assert "ocr-first-body-line-band-4.png" in pipeline.calls
+    assert "ocr-first-body-line-band-5.png" in pipeline.calls
+
+
+def test_paddle_ocr_runs_recovery_when_visual_line_exists_above_first_ocr_line(
+    tmp_path: Path,
+) -> None:
+    image_path = tmp_path / "page.png"
+    image = Image.new("RGB", (800, 1000), "white")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((140, 70, 760, 82), fill="black")
+    image.save(image_path)
+
+    class FakePipeline:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def predict(self, path: str) -> list[dict[str, object]]:
+            assert Path(path).is_file()
+            filename = Path(path).name
+            self.calls.append(filename)
+            if filename == "page.png":
+                return [
+                    {
+                        "rec_texts": [
+                            "甚至反向賺更多。因為白銀的跌勢更猛，於是買了SLV認",
+                            "沽期權的投資者更笑得合不攏嘴。【圖1.3】",
+                            "這就是期權的第二大魔法：雙向獲利+靈活切換。黃金和",
+                        ],
+                        "rec_scores": [0.96, 0.96, 0.97],
+                        "rec_boxes": [
+                            [140, 110, 760, 140],
+                            [140, 160, 760, 190],
+                            [140, 260, 760, 290],
+                        ],
+                    }
+                ]
+            if filename == "ocr-first-body-line-band-1.png":
+                return [
+                    {
+                        "rec_texts": [
+                            "正浪潮中價值暴增，短短幾天就把前面的獲利再次鎖定，",
+                        ],
+                        "rec_scores": [0.95],
+                        "rec_boxes": [[400, 750, 3500, 830]],
+                    }
+                ]
+            return []
+
+    provider = PaddleOcrProvider(
+        text_detection_model="test-det",
+        text_recognition_model="test-rec",
+        max_image_side=1024,
+        cache_path=tmp_path / "cache",
+    )
+    pipeline = FakePipeline()
+    provider._pipeline = pipeline
+
+    result = provider.read_page(image_path)
+
+    assert result.text.splitlines()[:4] == [
+        "正浪潮中價值暴增，短短幾天就把前面的獲利再次鎖定，",
+        "甚至反向賺更多。因為白銀的跌勢更猛，於是買了SLV認",
+        "沽期權的投資者更笑得合不攏嘴。【圖1.3】",
+        "這就是期權的第二大魔法：雙向獲利+靈活切換。黃金和",
+    ]
+    assert "ocr-top-slice.png" in pipeline.calls
+    assert "ocr-first-body-line-band-1.png" in pipeline.calls
+    assert "ocr-top-paragraph.png" in pipeline.calls
+
+
 def test_paddle_ocr_does_not_prepend_auxiliary_noise_mark(
     tmp_path: Path,
 ) -> None:
@@ -341,12 +549,136 @@ def test_paddle_ocr_keeps_better_recovered_line_when_auxiliary_lines_overlap() -
         ),
     ]
 
-    merged = PaddleOcrProvider._merge_top_slice_lines(top_lines, full_lines)
+    merged, warnings = PaddleOcrProvider._merge_top_slice_lines(
+        top_lines,
+        full_lines,
+        image_width=1000,
+    )
 
     assert [line.text for line in merged] == [
         "下來。很多只買實體黃金、黃金期貨和黃金相關股票的人",
         "慌了手腳，急忙賣出止損。金價於是從5600美元高點回",
     ]
+    assert warnings == []
+
+
+def test_paddle_ocr_warns_and_omits_untrustworthy_auxiliary_line() -> None:
+    full_lines = [
+        OcrLine(
+            text="甚至反向賺更多。因為白銀的跌勢更猛，於是買了SLV認",
+            confidence=0.98,
+            y_min=303,
+            x_min=121,
+            x_max=888,
+        )
+    ]
+    top_lines = [
+        OcrLine(
+            text="小便值异增，短短幾天就把前面的獾利再次销定",
+            confidence=0.82,
+            y_min=265,
+            x_min=206,
+            x_max=852,
+        )
+    ]
+
+    merged, warnings = PaddleOcrProvider._merge_top_slice_lines(
+        top_lines,
+        full_lines,
+        image_width=1000,
+    )
+
+    assert merged == full_lines
+    assert warnings == [PaddleOcrProvider.uncertain_text_warning]
+
+
+def test_paddle_ocr_fills_visual_slot_with_plausible_rejected_line() -> None:
+    full_lines = [
+        OcrLine(
+            text="沽期權的投資者更笑得合不攏嘴。【圖1.3】",
+            confidence=0.98,
+            y_min=160,
+            x_min=140,
+            x_max=760,
+        )
+    ]
+    top_lines = [
+        OcrLine(
+            text="正浪潮中價值暴增，短短幾天就把前面的獲利再次鎖定，",
+            confidence=0.95,
+            y_min=70,
+            x_min=140,
+            x_max=760,
+        ),
+        OcrLine(
+            text="甚至反向賺更多。因為白銀的跌勢更猛，於是買了SLV認",
+            confidence=0.87,
+            y_min=112,
+            x_min=156,
+            x_max=760,
+        ),
+    ]
+
+    merged, warnings = PaddleOcrProvider._merge_top_slice_lines(
+        top_lines,
+        full_lines,
+        image_width=800,
+        image_height=1000,
+        visual_bands=[
+            OcrCropBand(top=55, bottom=90),
+            OcrCropBand(top=98, bottom=133),
+        ],
+    )
+
+    assert [line.text for line in merged] == [
+        "正浪潮中價值暴增，短短幾天就把前面的獲利再次鎖定，",
+        "甚至反向賺更多。因為白銀的跌勢更猛，於是買了SLV認",
+        "沽期權的投資者更笑得合不攏嘴。【圖1.3】",
+    ]
+    assert warnings == []
+
+
+def test_paddle_ocr_splits_tall_visual_band_into_line_slots() -> None:
+    full_lines = [
+        OcrLine(
+            text="沽期權的投資者更笑得合不攏嘴。【圖1.3】",
+            confidence=0.98,
+            y_min=331,
+            x_min=103,
+            x_max=668,
+        )
+    ]
+    top_lines = [
+        OcrLine(
+            text="正浪潮中價值暴增·短短幾天就把前面的獲利再次鎖定，",
+            confidence=0.97,
+            y_min=228,
+            x_min=100,
+            x_max=856,
+        ),
+        OcrLine(
+            text="后向賺更多。因為白銀的跌勢更猛，於是買了SIV認",
+            confidence=0.92,
+            y_min=290,
+            x_min=155.4,
+            x_max=865,
+        ),
+    ]
+
+    merged, warnings = PaddleOcrProvider._merge_top_slice_lines(
+        top_lines,
+        full_lines,
+        image_width=1075,
+        image_height=1625,
+        visual_bands=[OcrCropBand(top=229, bottom=379)],
+    )
+
+    assert [line.text for line in merged] == [
+        "正浪潮中價值暴增·短短幾天就把前面的獲利再次鎖定，",
+        "后向賺更多。因為白銀的跌勢更猛，於是買了SIV認",
+        "沽期權的投資者更笑得合不攏嘴。【圖1.3】",
+    ]
+    assert warnings == []
 
 
 def test_paddle_ocr_does_not_prepend_misordered_lower_top_slice_line(
