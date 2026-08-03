@@ -507,3 +507,47 @@ MVP sections.
 
 - Commit: `a1183c2` (`Add site navigation`)
 - Pushed to `origin/main`.
+
+## 2026-08-01 — Temporary Supabase audio blockage note
+
+### Current state
+
+- Supabase-backed audio preparation can get stuck in `generating_audio` while
+  the local backend job is no longer active.
+- Recent inspection found a `chapter 1` document whose audio segment remained
+  `processing_status="generating"` with no `audio_storage_path`.
+- At least one local MP3 existed under `backend/data/<document-id>/audio/`,
+  which suggests audio generation can succeed locally before the Supabase
+  storage or metadata update finishes.
+- The frontend audio progress poll can surface a Next.js dev overlay because
+  `refreshAudioProgress()` does not currently catch `getDocumentAudio()`
+  failures.
+
+### Likely reasons
+
+- Real Edge TTS plus Supabase storage/metadata is slower and more fragile than
+  the local mock path.
+- Supabase storage upload or metadata requests can time out or fail mid-job.
+- Supabase metadata save currently deletes related page/audio rows before
+  reinserting them, so a failed request can leave a document partially updated.
+
+### Temporary plan
+
+- Use local `book.json` metadata and local files for the immediate Chapter 1
+  workflow if speed and reliability matter more than online persistence.
+- Local-only uploads and generated audio should remain available in the Library
+  as long as `backend/data/` is preserved and the backend uses the same storage
+  root.
+- Supabase-backed library items will not automatically appear in local-only mode
+  unless matching local `book.json` records are created.
+
+### Recovery target
+
+- After Chapter 1 is complete, recover the online-ready path by making audio
+  job completion robust around Supabase storage and metadata failures.
+- Add frontend error handling around audio progress polling.
+- Avoid leaving documents stuck in `generating_audio`; escaped audio-job
+  failures should mark the relevant segment or document as failed with a
+  beginner-friendly message.
+- Revisit Supabase metadata persistence so related rows are not left partially
+  deleted or stale if one request fails.

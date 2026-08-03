@@ -14,6 +14,7 @@ import {
   preparedPageImageUrl,
   retryPageText,
   startTextProcessing,
+  updatePageText,
 } from "@/lib/api";
 import type {
   DocumentDetail,
@@ -67,20 +68,27 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
   const [acting, setActing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [audioProgress, setAudioProgress] = useState({ completed: 0, total: 0 });
+  const [editingPageNumber, setEditingPageNumber] = useState<number | null>(null);
+  const [editingText, setEditingText] = useState("");
   const embeddedTextStartRequestedRef = useRef(false);
+  const documentLoadedRef = useRef(false);
+  const audioProgressFailureCountRef = useRef(0);
 
   const refresh = useCallback(async () => {
     try {
       const nextDocument = await getDocument(documentId);
+      documentLoadedRef.current = true;
       setDocument(nextDocument);
       setError(null);
     } catch (caught) {
       embeddedTextStartRequestedRef.current = false;
-      setError(
-        caught instanceof Error
-          ? caught.message
-          : "Echo could not load this temporary document.",
-      );
+      if (!documentLoadedRef.current) {
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : "Echo could not load this temporary document.",
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -99,16 +107,28 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
     ) {
       return;
     }
-    const timer = window.setInterval(() => void refresh(), 1500);
+    const timer = window.setInterval(() => void refresh(), 3000);
     return () => window.clearInterval(timer);
   }, [document, refresh]);
 
   const refreshAudioProgress = useCallback(async () => {
-    const audio = await getDocumentAudio(documentId);
-    const completed = audio.segments.filter(
-      (segment) => segment.processing_status === "completed" && segment.audio_url,
-    ).length;
-    setAudioProgress({ completed, total: audio.segments.length });
+    try {
+      const audio = await getDocumentAudio(documentId);
+      const completed = audio.segments.filter(
+        (segment) => segment.processing_status === "completed" && segment.audio_url,
+      ).length;
+      audioProgressFailureCountRef.current = 0;
+      setAudioProgress({ completed, total: audio.segments.length });
+    } catch (caught) {
+      audioProgressFailureCountRef.current += 1;
+      if (audioProgressFailureCountRef.current >= 3) {
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : "Echo could not load the listening audio progress.",
+        );
+      }
+    }
   }, [documentId]);
 
   useEffect(() => {
@@ -119,7 +139,7 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
       return () => window.clearTimeout(initialTimer);
     }
 
-    const timer = window.setInterval(() => void refreshAudioProgress(), 1500);
+    const timer = window.setInterval(() => void refreshAudioProgress(), 3000);
     return () => {
       window.clearTimeout(initialTimer);
       window.clearInterval(timer);
@@ -216,6 +236,30 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
     }
   }, [document, documentId, router]);
 
+  const savePageText = useCallback(async () => {
+    if (editingPageNumber === null) return;
+    setActing(true);
+    setError(null);
+    try {
+      const nextDocument = await updatePageText(
+        documentId,
+        editingPageNumber,
+        editingText,
+      );
+      setDocument(nextDocument);
+      setEditingPageNumber(null);
+      setEditingText("");
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : `Echo could not save page ${editingPageNumber} text.`,
+      );
+    } finally {
+      setActing(false);
+    }
+  }, [documentId, editingPageNumber, editingText]);
+
   if (loading) {
     return <p className="mt-10 text-lg text-muted">Loading your document...</p>;
   }
@@ -246,9 +290,16 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
     textProcessingStatuses.has(document.processing_status);
   const canResumeText =
     textProcessingStatuses.has(document.processing_status) && !document.processing_active;
+  const canResumeFailedAudio =
+    document.processing_status === "failed" &&
+    document.failed_pages === 0 &&
+    document.audio_segment_count > 0 &&
+    document.pages.every((page) => page.processing_status === "completed");
+  const canResumeAudio =
+    (document.processing_status === "generating_audio" && !document.processing_active) ||
+    canResumeFailedAudio;
   const canStartAudio =
-    document.processing_status === "text_ready" ||
-    (document.processing_status === "generating_audio" && !document.processing_active);
+    document.processing_status === "text_ready" || canResumeAudio;
   const listenNowDisabled = acting || !canStartAudio;
   const audioPercent =
     audioProgress.total > 0
@@ -372,7 +423,7 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
             <p>All page text is prepared. Select Listen now to create listening audio.</p>
           </div>
         )}
-        {document.processing_status === "generating_audio" && !document.processing_active && (
+        {canResumeAudio && (
           <div className="mt-4 rounded-xl border border-[#d9b9b4] bg-[#fff3f1] p-4 text-[#783a33]">
             <p>Audio preparation stopped before it finished.</p>
             <button
@@ -390,7 +441,7 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
             <p>Listening audio is ready.</p>
           </div>
         )}
-        {document.error_message && !error && (
+        {document.error_message && !error && !canResumeFailedAudio && (
           <p className="mt-4 rounded-xl border border-[#d9b9b4] bg-[#fff3f1] p-4 text-[#783a33]">
             {document.error_message}
           </p>
@@ -481,14 +532,63 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
               {page.error_message && (
                 <p className="mt-3 text-sm text-[#783a33]">{page.error_message}</p>
               )}
-              {page.extracted_text && (
+              {(page.extracted_text || page.processing_status === "failed") && (
                 <details className="mt-4 rounded-xl bg-[#f8f6f0] p-4">
                   <summary className="cursor-pointer font-semibold">
-                    Review page text ({page.extracted_character_count} characters)
+                    {page.extracted_text
+                      ? `Review page text (${page.extracted_character_count} characters)`
+                      : "Enter page text manually"}
                   </summary>
-                  <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-muted">
-                    {page.extracted_text}
-                  </p>
+                  {editingPageNumber === page.page_number ? (
+                    <div className="mt-3">
+                      <textarea
+                        value={editingText}
+                        onChange={(event) => setEditingText(event.target.value)}
+                        rows={10}
+                        className="w-full rounded-lg border border-border bg-white p-3 text-sm leading-7 text-foreground"
+                      />
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          disabled={acting || !editingText.trim()}
+                          onClick={() => void savePageText()}
+                          className="min-h-10 rounded-lg bg-accent px-4 font-semibold text-white hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          Save page text
+                        </button>
+                        <button
+                          type="button"
+                          disabled={acting}
+                          onClick={() => {
+                            setEditingPageNumber(null);
+                            setEditingText("");
+                          }}
+                          className="min-h-10 rounded-lg border border-border px-4 font-semibold hover:bg-white disabled:opacity-60"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {page.extracted_text && (
+                        <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-muted">
+                          {page.extracted_text}
+                        </p>
+                      )}
+                      <button
+                        type="button"
+                        disabled={acting}
+                        onClick={() => {
+                          setEditingPageNumber(page.page_number);
+                          setEditingText(page.extracted_text);
+                        }}
+                        className="mt-3 min-h-10 rounded-lg border border-accent px-4 font-semibold text-accent hover:bg-white disabled:opacity-60"
+                      >
+                        {page.extracted_text ? "Edit page text" : "Enter page text manually"}
+                      </button>
+                    </>
+                  )}
                 </details>
               )}
             </li>

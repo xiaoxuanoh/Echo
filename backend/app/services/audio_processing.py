@@ -65,13 +65,41 @@ class DocumentAudioProcessingService:
                 "This document already has listening audio prepared.",
                 status_code=409,
             )
-        if document.status == "generating_audio" and document.audio_segments:
+        if (
+            document.status in {"failed", "generating_audio"}
+            and document.audio_segments
+            and all(page.processing_status == "completed" for page in document.pages)
+        ):
             now = datetime.now(UTC)
+            tts_provider = self._tts_provider_for(document)
+            audio_directory = self.document_directory(document.id) / "audio"
             for segment in document.audio_segments:
+                fallback_path = (
+                    f"audio/segment-{segment.segment_number:04d}."
+                    f"{tts_provider.audio_file_extension}"
+                )
+                audio_storage_path = segment.audio_storage_path or fallback_path
+                audio_path = self.document_directory(document.id) / audio_storage_path
+                if audio_path.exists():
+                    segment.audio_storage_path = audio_storage_path
+                    segment.processing_status = "completed"
+                    segment.error_message = None
+                    segment.updated_at = now
+                    continue
                 if segment.processing_status in {"generating", "failed"}:
+                    segment.audio_storage_path = None
                     segment.processing_status = "pending"
                     segment.error_message = None
                     segment.updated_at = now
+            audio_directory.mkdir(parents=True, exist_ok=True)
+            document.status = (
+                "ready"
+                if all(
+                    segment.processing_status == "completed"
+                    for segment in document.audio_segments
+                )
+                else "generating_audio"
+            )
             document.error_message = None
             document.updated_at = now
             self.metadata.save(self.document_directory(document.id), document)
@@ -142,7 +170,16 @@ class DocumentAudioProcessingService:
                 duration = tts_provider.synthesize(segment.source_text, audio_path)
                 segment.audio_storage_path = f"audio/{filename}"
                 if self.store_audio_file is not None:
-                    self.store_audio_file(document, segment, audio_path)
+                    try:
+                        self.store_audio_file(document, segment, audio_path)
+                    except Exception:
+                        logger.warning(
+                            "Audio cloud storage sync failed for document %s segment %s; "
+                            "keeping local audio file",
+                            document.id,
+                            segment.segment_number,
+                            exc_info=True,
+                        )
                 segment.duration_seconds = duration
                 segment.processing_status = "completed"
             except Exception:
@@ -159,6 +196,23 @@ class DocumentAudioProcessingService:
             self.metadata.save(self.document_directory(document.id), document)
 
         self._finalize_document(document)
+
+    def mark_audio_job_failed(
+        self,
+        document_id: UUID,
+        message: str = "Audio preparation stopped before it finished.",
+    ) -> None:
+        document = self.load_document(document_id)
+        now = datetime.now(UTC)
+        for segment in document.audio_segments:
+            if segment.processing_status in {"pending", "generating"}:
+                segment.processing_status = "failed"
+                segment.error_message = message
+                segment.updated_at = now
+        document.status = "failed"
+        document.error_message = message
+        document.updated_at = now
+        self.metadata.save(self.document_directory(document.id), document)
 
     def _finalize_document(self, document: DocumentRecord) -> None:
         failed_segments = [

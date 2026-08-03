@@ -13,8 +13,9 @@ from fastapi.testclient import TestClient
 from app.core.config import Settings
 from app.api.routes.books import _resolve_ffmpeg_path
 from app.main import create_app
-from app.models.documents import DocumentPageRecord
+from app.models.documents import AudioSegmentRecord, DocumentPageRecord, DocumentRecord
 from app.services.document_metadata import LocalDocumentMetadataService
+from app.services.audio_processing import DocumentAudioProcessingService
 from app.services.tts import (
     AzureSpeechTtsProvider,
     EdgeTtsProvider,
@@ -207,6 +208,189 @@ def test_prepares_mock_audio_for_text_ready_book(
     assert saved.status == "ready"
     assert saved.audio_segments[0].audio_storage_path == "audio/segment-0001.wav"
     assert (storage_path / upload["book_id"] / "audio" / "segment-0001.wav").exists()
+
+
+def test_process_audio_keeps_local_file_when_cloud_storage_fails(storage_path: Path) -> None:
+    now = datetime.now(UTC)
+    document_id = uuid4()
+    page_id = uuid4()
+    document_directory = storage_path / str(document_id)
+    document_directory.mkdir(parents=True)
+    metadata = LocalDocumentMetadataService()
+    metadata.save(
+        document_directory,
+        DocumentRecord(
+            id=document_id,
+            library_book_id=document_id,
+            title="Local audio survives storage failure",
+            source_type="pdf",
+            total_pages=1,
+            status="text_ready",
+            pages=[
+                DocumentPageRecord(
+                    id=page_id,
+                    book_id=document_id,
+                    page_number=1,
+                    extraction_method="embedded_text",
+                    extracted_text="Prepared text.",
+                    processing_status="completed",
+                    created_at=now,
+                    updated_at=now,
+                )
+            ],
+            created_at=now,
+            updated_at=now,
+        ),
+    )
+
+    def fail_to_store_audio(
+        _document: DocumentRecord,
+        _segment: AudioSegmentRecord,
+        _audio_path: Path,
+    ) -> None:
+        raise RuntimeError("offline")
+
+    service = DocumentAudioProcessingService(
+        storage_root=storage_path,
+        max_segment_characters=3000,
+        metadata=metadata,
+        store_audio_file=fail_to_store_audio,
+    )
+
+    service.prepare_audio_job(document_id)
+    service.process_audio(document_id)
+
+    saved = metadata.load(document_directory)
+    assert saved.status == "ready"
+    assert saved.error_message is None
+    assert saved.audio_segments[0].processing_status == "completed"
+    assert saved.audio_segments[0].audio_storage_path == "audio/segment-0001.wav"
+    assert (document_directory / "audio" / "segment-0001.wav").exists()
+
+
+def test_prepare_audio_job_recovers_failed_local_audio_file(storage_path: Path) -> None:
+    now = datetime.now(UTC)
+    document_id = uuid4()
+    page_id = uuid4()
+    segment_id = uuid4()
+    document_directory = storage_path / str(document_id)
+    audio_directory = document_directory / "audio"
+    audio_directory.mkdir(parents=True)
+    (audio_directory / "segment-0001.wav").write_bytes(b"audio")
+    metadata = LocalDocumentMetadataService()
+    metadata.save(
+        document_directory,
+        DocumentRecord(
+            id=document_id,
+            library_book_id=document_id,
+            title="Failed after local audio",
+            source_type="images",
+            total_pages=1,
+            status="failed",
+            error_message="Audio preparation stopped before it finished.",
+            pages=[
+                DocumentPageRecord(
+                    id=page_id,
+                    book_id=document_id,
+                    page_number=1,
+                    extraction_method="ocr",
+                    extracted_text="Prepared text.",
+                    processing_status="completed",
+                    created_at=now,
+                    updated_at=now,
+                )
+            ],
+            audio_segments=[
+                AudioSegmentRecord(
+                    id=segment_id,
+                    book_id=document_id,
+                    page_id=page_id,
+                    segment_number=1,
+                    source_text="Prepared text.",
+                    processing_status="failed",
+                    error_message="Audio preparation stopped before it finished.",
+                    created_at=now,
+                    updated_at=now,
+                )
+            ],
+            created_at=now,
+            updated_at=now,
+        ),
+    )
+    service = DocumentAudioProcessingService(
+        storage_root=storage_path,
+        max_segment_characters=3000,
+        metadata=metadata,
+    )
+
+    document = service.prepare_audio_job(document_id)
+
+    assert document.status == "ready"
+    assert document.error_message is None
+    assert document.audio_segments[0].processing_status == "completed"
+    assert document.audio_segments[0].audio_storage_path == "audio/segment-0001.wav"
+    saved = metadata.load(document_directory)
+    assert saved.status == "ready"
+    assert saved.audio_segments[0].processing_status == "completed"
+
+
+def test_marks_interrupted_audio_job_as_failed(storage_path: Path) -> None:
+    now = datetime.now(UTC)
+    document_id = uuid4()
+    page_id = uuid4()
+    document_directory = storage_path / str(document_id)
+    document_directory.mkdir(parents=True)
+    metadata = LocalDocumentMetadataService()
+    metadata.save(
+        document_directory,
+        DocumentRecord(
+            id=document_id,
+            library_book_id=document_id,
+            title="Interrupted audio",
+            source_type="pdf",
+            total_pages=1,
+            status="generating_audio",
+            pages=[
+                DocumentPageRecord(
+                    id=page_id,
+                    book_id=document_id,
+                    page_number=1,
+                    extraction_method="embedded_text",
+                    extracted_text="Prepared text.",
+                    processing_status="completed",
+                    created_at=now,
+                    updated_at=now,
+                )
+            ],
+            audio_segments=[
+                AudioSegmentRecord(
+                    id=uuid4(),
+                    book_id=document_id,
+                    page_id=page_id,
+                    segment_number=1,
+                    source_text="Prepared text.",
+                    processing_status="generating",
+                    created_at=now,
+                    updated_at=now,
+                )
+            ],
+            created_at=now,
+            updated_at=now,
+        ),
+    )
+    service = DocumentAudioProcessingService(
+        storage_root=storage_path,
+        max_segment_characters=3000,
+        metadata=metadata,
+    )
+
+    service.mark_audio_job_failed(document_id, "Storage timed out.")
+
+    saved = metadata.load(document_directory)
+    assert saved.status == "failed"
+    assert saved.error_message == "Storage timed out."
+    assert saved.audio_segments[0].processing_status == "failed"
+    assert saved.audio_segments[0].error_message == "Storage timed out."
 
 
 def test_tts_factory_keeps_mock_mode_as_default(storage_path: Path) -> None:

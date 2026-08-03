@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DocumentAudioPlayer } from "@/components/documents/document-audio-player";
@@ -196,6 +196,47 @@ describe("document audio player", () => {
     expect(
       screen.getByText("Audio creation appears to have stopped. Continue to resume it."),
     ).toBeVisible();
+  });
+
+  it("offers to recover failed audio creation with existing segments", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          ...readyAudio,
+          processing_status: "failed",
+          segments: [
+            {
+              ...readyAudio.segments[0],
+              audio_url: null,
+              duration_seconds: null,
+              processing_status: "failed",
+              error_message: "Audio preparation stopped before it finished.",
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            book_id: "document-id",
+            processing_status: "generating_audio",
+            message: "Echo has started creating listening audio.",
+          },
+          202,
+        ),
+      )
+      .mockResolvedValueOnce(jsonResponse(readyAudio));
+
+    render(<DocumentAudioPlayer documentId="document-id" />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Continue creating audio" }),
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(screen.getByText("2 audio parts ready")).toBeVisible();
+    expect(fetchMock.mock.calls[1][0]).toContain("/prepare-audio");
   });
 
   it("marks the document finished after the final segment ends", async () => {

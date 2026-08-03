@@ -20,6 +20,15 @@ describe("upload auth gate", () => {
     vi.clearAllMocks();
   });
 
+  it("shows the upload form when Supabase is not configured", async () => {
+    getSupabaseBrowserClientMock.mockReturnValue(null);
+
+    render(<UploadAuthGate />);
+
+    expect(await screen.findByText("Upload form ready")).toBeInTheDocument();
+    expect(screen.queryByText("Sign in to upload files")).not.toBeInTheDocument();
+  });
+
   it("blocks uploads when the user is signed out", async () => {
     const unsubscribe = vi.fn();
 

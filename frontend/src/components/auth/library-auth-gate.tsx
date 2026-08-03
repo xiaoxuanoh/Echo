@@ -25,7 +25,11 @@ export function LibraryAuthGate() {
     );
   }
 
-  if (!isConfigured || !isSignedIn) {
+  if (!isConfigured) {
+    return <DocumentLibrary />;
+  }
+
+  if (!isSignedIn) {
     return (
       <section className="mx-auto mt-10 max-w-2xl overflow-hidden rounded-2xl border border-border bg-surface shadow-[0_18px_55px_rgba(48,55,61,0.08)] transition-shadow duration-300 hover:shadow-[0_24px_70px_rgba(48,55,61,0.12)]">
         <div className="border-b border-border bg-[#fbfaf6] px-6 py-4 sm:px-8">

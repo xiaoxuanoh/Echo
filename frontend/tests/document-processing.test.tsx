@@ -62,6 +62,13 @@ const readyDocument = {
   audio_segment_count: 1,
 };
 
+const activeAudioDocument = {
+  ...completedDocument,
+  processing_status: "generating_audio",
+  processing_active: true,
+  audio_segment_count: 1,
+};
+
 function jsonResponse(body: object, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -247,6 +254,54 @@ describe("document text preparation", () => {
     expect(fetchMock.mock.calls[1][0]).toContain("/pages/1/retry-text");
   });
 
+  it("saves manual text for a failed OCR page", async () => {
+    const failedDocument = {
+      ...uploadedDocument,
+      processing_status: "failed",
+      error_message: "1 page still needs attention.",
+      failed_pages: 1,
+      pages: [
+        {
+          ...uploadedDocument.pages[0],
+          processing_status: "failed",
+          error_message: "Echo could not read the text on this page.",
+        },
+      ],
+    };
+    const manuallyCompletedDocument = {
+      ...completedDocument,
+      pages: [
+        {
+          ...completedDocument.pages[0],
+          extracted_text: "讀畢本章，當你知道如何謹慎且適當地使用時。",
+          extracted_character_count: 22,
+        },
+      ],
+    };
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(failedDocument))
+      .mockResolvedValueOnce(jsonResponse(manuallyCompletedDocument));
+
+    render(<DocumentProcessing documentId="document-id" />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Enter page text manually" }),
+    );
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "讀畢本章，當你知道如何謹慎且適當地使用時。" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save page text" }));
+
+    expect(
+      await screen.findByText(
+        "All page text is prepared. Select Listen now to create listening audio.",
+      ),
+    ).toBeVisible();
+    expect(fetchMock.mock.calls[1][0]).toContain("/pages/1/text");
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: "PATCH" });
+  });
+
   it("offers to continue an interrupted local job", async () => {
     const interruptedDocument = {
       ...uploadedDocument,
@@ -266,5 +321,61 @@ describe("document text preparation", () => {
         "Preparation appears to have stopped. Resume reading from the first unfinished page.",
       ),
     ).toBeVisible();
+  });
+
+  it("offers to recover failed audio preparation after page text is ready", async () => {
+    const failedAudioDocument = {
+      ...completedDocument,
+      processing_status: "failed",
+      error_message: "Audio preparation stopped before it finished.",
+      audio_segment_count: 1,
+      failed_pages: 0,
+    };
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(failedAudioDocument))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            book_id: "document-id",
+            processing_status: "generating_audio",
+            message: "Echo has started creating listening audio.",
+          },
+          202,
+        ),
+      )
+      .mockResolvedValueOnce(jsonResponse(readyDocument));
+
+    render(<DocumentProcessing documentId="document-id" />);
+
+    expect(
+      await screen.findByRole("button", { name: "Resume audio preparation" }),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Resume audio preparation" }));
+
+    expect(await screen.findByText("Listening audio is ready.")).toBeVisible();
+    expect(fetchMock.mock.calls[1][0]).toContain("/prepare-audio");
+  });
+
+  it("keeps the progress view during one transient audio polling error", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(activeAudioDocument))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            error: {
+              message: "Echo could not reach the library database right now.",
+            },
+          },
+          503,
+        ),
+      );
+
+    render(<DocumentProcessing documentId="document-id" />);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(screen.getByText("Creating the audio")).toBeVisible();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

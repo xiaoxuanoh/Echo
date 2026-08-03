@@ -214,10 +214,13 @@ export function DocumentAudioPlayer({ documentId }: { documentId: string }) {
     );
   }
 
+  const canResumeAudio =
+    (documentAudio.processing_status === "generating_audio" &&
+      !documentAudio.processing_active) ||
+    (documentAudio.processing_status === "failed" && documentAudio.segments.length > 0);
   const canStart =
     documentAudio.processing_status === "text_ready" ||
-    (documentAudio.processing_status === "generating_audio" &&
-      !documentAudio.processing_active);
+    canResumeAudio;
   const title = listeningTitle(documentAudio);
   const showUploadContext = title !== documentAudio.title;
 
@@ -323,8 +326,15 @@ export function DocumentAudioPlayer({ documentId }: { documentId: string }) {
               Audio creation appears to have stopped. Continue to resume it.
             </p>
           )}
+        {documentAudio.processing_status === "failed" && documentAudio.segments.length > 0 && (
+          <p className="mt-4 rounded-xl border border-[#d2c69e] bg-[#fff9e8] p-4 text-[#6d5a22]">
+            Audio creation stopped before it finished. Continue to recover local audio
+            or resume the unfinished parts.
+          </p>
+        )}
         {documentAudio.processing_status !== "text_ready" &&
           documentAudio.processing_status !== "generating_audio" &&
+          documentAudio.processing_status !== "failed" &&
           documentAudio.processing_status !== "ready" && (
             <p className="mt-4 rounded-xl border border-[#d2c69e] bg-[#fff9e8] p-4 text-[#6d5a22]">
               Prepare the page text before creating listening audio.

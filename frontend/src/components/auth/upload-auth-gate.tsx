@@ -35,7 +35,19 @@ export function UploadAuthGate({
     );
   }
 
-  if (!isConfigured || !isSignedIn) {
+  if (!isConfigured) {
+    return (
+      <section className="mt-5 rounded-2xl border border-border bg-surface p-5 shadow-[0_14px_40px_rgba(48,55,61,0.05)] sm:p-6">
+        <DocumentUpload
+          initialLanguage={initialLanguage}
+          libraryDocumentId={libraryDocumentId}
+          libraryDocumentTitle={libraryDocumentTitle}
+        />
+      </section>
+    );
+  }
+
+  if (!isSignedIn) {
     return (
       <section className="mx-auto mt-5 max-w-2xl overflow-hidden rounded-2xl border border-border bg-surface shadow-[0_18px_55px_rgba(48,55,61,0.08)] transition-shadow duration-300 hover:shadow-[0_24px_70px_rgba(48,55,61,0.12)]">
         <div className="border-b border-border bg-[#fbfaf6] px-6 py-4 sm:px-8">

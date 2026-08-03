@@ -1,4 +1,5 @@
 import json
+import http.client
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
@@ -48,16 +49,16 @@ def test_supabase_metadata_save_writes_document_page_and_audio_rows(
 
     assert [request.get_method() for request in requests] == [
         "POST",
-        "DELETE",
-        "DELETE",
         "POST",
         "POST",
     ]
     document_payload = json.loads(requests[0].data.decode("utf-8"))[0]
-    page_payload = json.loads(requests[3].data.decode("utf-8"))[0]
-    segment_payload = json.loads(requests[4].data.decode("utf-8"))[0]
+    page_payload = json.loads(requests[1].data.decode("utf-8"))[0]
+    segment_payload = json.loads(requests[2].data.decode("utf-8"))[0]
     assert document_payload["id"] == str(DOCUMENT_ID)
     assert document_payload["user_id"] == str(USER_ID)
+    assert "on_conflict=id" in requests[1].full_url
+    assert "on_conflict=id" in requests[2].full_url
     assert page_payload["crop_left"] == 0.1
     assert page_payload["crop_top"] == 0.2
     assert page_payload["crop_right"] == 0.9
@@ -88,6 +89,63 @@ def test_supabase_metadata_load_rebuilds_document_record(monkeypatch) -> None:
     assert document.pages[0].crop_left == 0.1
     assert document.pages[0].processed_image_path == "pages/page-0001.png"
     assert document.audio_segments[0].audio_storage_path == "audio/segment-0001.mp3"
+
+
+def test_supabase_metadata_get_retries_incomplete_chunked_response(monkeypatch) -> None:
+    responses = [
+        http.client.IncompleteRead(b"", 191),
+        [{"id": str(DOCUMENT_ID), "status": "ready"}],
+    ]
+
+    def fake_urlopen(request, timeout):
+        del request, timeout
+        response = responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return FakeResponse(response)
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    service = SupabaseDocumentMetadataService(
+        supabase_url="https://example.supabase.co",
+        service_role_key="secret",
+    )
+
+    result = service._request_json("GET", "documents")
+
+    assert result == [{"id": str(DOCUMENT_ID), "status": "ready"}]
+    assert responses == []
+
+
+def test_supabase_metadata_post_retries_incomplete_chunked_response(monkeypatch) -> None:
+    responses = [http.client.IncompleteRead(b"", 191), None]
+    requests = []
+
+    def fake_urlopen(request, timeout):
+        del timeout
+        requests.append(request)
+        response = responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return FakeResponse(response)
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    service = SupabaseDocumentMetadataService(
+        supabase_url="https://example.supabase.co",
+        service_role_key="secret",
+    )
+
+    result = service._request_json(
+        "POST",
+        "documents",
+        query={"on_conflict": "id"},
+        body=[{"id": str(DOCUMENT_ID)}],
+        prefer="resolution=merge-duplicates,return=minimal",
+        expect_json=False,
+    )
+
+    assert result is None
+    assert [request.get_method() for request in requests] == ["POST", "POST"]
+    assert responses == []
 
 
 def _document_record() -> DocumentRecord:

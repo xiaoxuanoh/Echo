@@ -334,7 +334,7 @@ class FakeSupabaseStorage:
         self.deleted_prefixes.append((bucket, prefix))
 
 
-def test_crops_obvious_photo_background_before_ocr(tmp_path: Path) -> None:
+def test_preserves_uploaded_photo_bounds_before_manual_crop(tmp_path: Path) -> None:
     from app.services.image_processing import ImageProcessingService
 
     source = tmp_path / "photo.png"
@@ -347,12 +347,7 @@ def test_crops_obvious_photo_background_before_ocr(tmp_path: Path) -> None:
     ImageProcessingService(max_pixels=100_000).normalize_image(source, destination, 0)
 
     with Image.open(destination) as normalized:
-        assert normalized.width < photo.width
-        assert normalized.height < photo.height
-        assert normalized.width >= page.width
-        assert normalized.height >= page.height
-        assert normalized.width <= page.width + 25
-        assert normalized.height <= page.height + 30
+        assert normalized.size == photo.size
 
 
 def test_keeps_ambiguous_image_size_when_page_crop_is_unclear(tmp_path: Path) -> None:

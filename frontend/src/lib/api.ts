@@ -166,6 +166,21 @@ export async function retryPageText(
   );
 }
 
+export async function updatePageText(
+  documentId: string,
+  pageNumber: number,
+  text: string,
+): Promise<DocumentDetail> {
+  return parseResponse<DocumentDetail>(
+    await echoFetch(`${API_BASE_URL}/api/books/${documentId}/pages/${pageNumber}/text`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    }),
+    `Echo could not save page ${pageNumber} text.`,
+  );
+}
+
 export async function getDocumentAudio(documentId: string): Promise<DocumentAudio> {
   return parseResponse<DocumentAudio>(
     await echoFetch(`${API_BASE_URL}/api/books/${documentId}/audio`, { cache: "no-store" }),

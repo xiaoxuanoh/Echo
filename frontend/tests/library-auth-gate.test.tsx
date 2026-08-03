@@ -20,6 +20,15 @@ describe("library auth gate", () => {
     vi.clearAllMocks();
   });
 
+  it("shows the library when Supabase is not configured", async () => {
+    getSupabaseBrowserClientMock.mockReturnValue(null);
+
+    render(<LibraryAuthGate />);
+
+    expect(await screen.findByText("Library ready")).toBeInTheDocument();
+    expect(screen.queryByText("Sign in to view your library")).not.toBeInTheDocument();
+  });
+
   it("blocks library access when the user is signed out", async () => {
     const unsubscribe = vi.fn();
 

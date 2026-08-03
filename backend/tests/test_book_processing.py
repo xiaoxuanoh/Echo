@@ -56,6 +56,39 @@ def test_ocr_cleanup_removes_running_header() -> None:
     )
 
 
+def test_ocr_cleanup_removes_short_top_running_title() -> None:
+    text = (
+        "大户思维期權獵金\n"
+        "多，有些是純粹的投機者，有些是長期投資者，也有股票\n"
+        "經紀和交易商，有些代表退休基金客戶或像你我這樣的普通散戶投資者。\n"
+    )
+
+    cleaned = DocumentTextProcessingService._clean_ocr_text(
+        text,
+        target_language="cantonese",
+    )
+
+    assert cleaned == (
+        "多，有些是純粹的投機者，有些是長期投資者，也有股票\n"
+        "經紀和交易商，有些代表退休基金客戶或像你我這樣的普通散戶投資者。"
+    )
+
+
+def test_ocr_cleanup_preserves_body_heading_after_prose() -> None:
+    text = (
+        "現在，讓我們看看3個最近發生的市場故事。\n"
+        "故事一：期權魔法，用小錢抓住「黃金」機會\n"
+        "你每天上班下班，偶爾看新聞時發現黃金價格直衝雲霄。"
+    )
+
+    cleaned = DocumentTextProcessingService._clean_ocr_text(
+        text,
+        target_language="cantonese",
+    )
+
+    assert cleaned == text
+
+
 def test_ocr_cleanup_uses_target_language_for_chart_placeholder() -> None:
     text = (
         "Figure 1.1: SPDR Gold ETF price trend\n"
@@ -264,6 +297,39 @@ def test_rejects_retry_for_a_page_that_has_not_failed(client: TestClient) -> Non
     assert response.json()["error"]["code"] == "page_not_failed"
 
 
+def test_updates_failed_page_text_manually(
+    client: TestClient,
+    storage_path: Path,
+) -> None:
+    upload = client.post(
+        "/api/books/images",
+        files=[("files", ("page.png", image_bytes((20, 30)), "image/png"))],
+        data={"rotations": "[0]"},
+    ).json()
+    document_directory = storage_path / upload["book_id"]
+    metadata = LocalDocumentMetadataService()
+    document = metadata.load(document_directory)
+    document.status = "failed"
+    document.error_message = "1 page still needs attention."
+    document.pages[0].processing_status = "failed"
+    document.pages[0].error_message = "Echo could not read the text on this page."
+    metadata.save(document_directory, document)
+
+    response = client.patch(
+        f"/api/books/{upload['book_id']}/pages/1/text",
+        json={"text": "讀畢本章，當你知道如何謹慎且適當地使用時。"},
+    )
+
+    assert response.status_code == 200
+    detail = response.json()
+    assert detail["processing_status"] == "text_ready"
+    assert detail["completed_pages"] == 1
+    assert detail["failed_pages"] == 0
+    assert detail["pages"][0]["processing_status"] == "completed"
+    assert detail["pages"][0]["error_message"] is None
+    assert detail["pages"][0]["extracted_text"].startswith("讀畢本章")
+
+
 def test_saves_failure_then_successfully_retries(
     client: TestClient,
     storage_path: Path,
@@ -301,6 +367,31 @@ def test_saves_failure_then_successfully_retries(
 
     assert completed.status == "text_ready"
     assert completed.pages[0].processing_status == "completed"
+
+
+def test_marks_interrupted_text_job_as_failed(
+    client: TestClient,
+    storage_path: Path,
+) -> None:
+    upload = client.post(
+        "/api/books/images",
+        files=[("files", ("page.png", image_bytes((20, 30)), "image/png"))],
+        data={"rotations": "[0]"},
+    ).json()
+    document_id = LocalDocumentMetadataService().load(storage_path / upload["book_id"]).id
+    service = DocumentTextProcessingService(
+        storage_root=storage_path,
+        ocr_provider=MockOcrProvider(),
+    )
+    service.prepare_document_job(document_id)
+
+    service.mark_text_job_failed(document_id, "Library database timed out.")
+
+    failed = service.load_document(document_id)
+    assert failed.status == "failed"
+    assert failed.error_message == "Library database timed out."
+    assert failed.pages[0].processing_status == "failed"
+    assert failed.pages[0].error_message == "Library database timed out."
 
 
 def test_embedded_text_finishes_when_ocr_is_disabled(

@@ -199,6 +199,10 @@ class DocumentAssignFolderRequest(BaseModel):
     folder_id: UUID
 
 
+class PageTextUpdateRequest(BaseModel):
+    text: str
+
+
 class DocumentMutationResult(BaseModel):
     message: str
 

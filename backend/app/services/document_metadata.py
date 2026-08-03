@@ -1,4 +1,6 @@
 import json
+import http.client
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -79,6 +81,9 @@ class LocalDocumentMetadataService:
 class SupabaseDocumentMetadataService:
     """Persists document metadata in Supabase while preserving DocumentRecord."""
 
+    transient_status_codes = {503, 520}
+    transient_retry_methods = {"GET", "HEAD", "POST"}
+
     def __init__(self, *, supabase_url: str, service_role_key: str) -> None:
         self.rest_url = f"{supabase_url.rstrip('/')}/rest/v1"
         self.service_role_key = service_role_key
@@ -152,25 +157,25 @@ class SupabaseDocumentMetadataService:
             prefer="resolution=merge-duplicates,return=minimal",
             expect_json=False,
         )
-        self._delete_related_rows("audio_segments", document.id)
-        self._delete_related_rows("document_pages", document.id)
         if document.pages:
             self._request_json(
                 "POST",
                 "document_pages",
+                query={"on_conflict": "id"},
                 body=[self._page_row(document, page) for page in document.pages],
-                prefer="return=minimal",
+                prefer="resolution=merge-duplicates,return=minimal",
                 expect_json=False,
             )
         if document.audio_segments:
             self._request_json(
                 "POST",
                 "audio_segments",
+                query={"on_conflict": "id"},
                 body=[
                     self._audio_segment_row(document, segment)
                     for segment in document.audio_segments
                 ],
-                prefer="return=minimal",
+                prefer="resolution=merge-duplicates,return=minimal",
                 expect_json=False,
             )
         return Path(str(document.id))
@@ -236,22 +241,38 @@ class SupabaseDocumentMetadataService:
         if prefer is not None:
             headers["Prefer"] = prefer
         request = urllib.request.Request(url, data=data, headers=headers, method=method)
-        try:
-            with urllib.request.urlopen(request, timeout=15) as response:
-                response_body = response.read()
-        except urllib.error.HTTPError as error:
-            raise EchoError(
-                "supabase_metadata_failed",
-                "Echo could not save or load your library information.",
-                status_code=502,
-                details={"status_code": error.code},
-            ) from error
-        except (urllib.error.URLError, TimeoutError) as error:
-            raise EchoError(
-                "supabase_metadata_unavailable",
-                "Echo could not reach the library database right now.",
-                status_code=503,
-            ) from error
+        max_attempts = 3 if method in self.transient_retry_methods else 1
+        for attempt in range(max_attempts):
+            try:
+                with urllib.request.urlopen(request, timeout=15) as response:
+                    response_body = response.read()
+                break
+            except urllib.error.HTTPError as error:
+                if (
+                    error.code in self.transient_status_codes
+                    and attempt < max_attempts - 1
+                ):
+                    time.sleep(0.5 * (2**attempt))
+                    continue
+                raise EchoError(
+                    "supabase_metadata_failed",
+                    "Echo could not save or load your library information.",
+                    status_code=502,
+                    details={"status_code": error.code},
+                ) from error
+            except (
+                urllib.error.URLError,
+                TimeoutError,
+                http.client.HTTPException,
+            ) as error:
+                if attempt < max_attempts - 1:
+                    time.sleep(0.5 * (2**attempt))
+                    continue
+                raise EchoError(
+                    "supabase_metadata_unavailable",
+                    "Echo could not reach the library database right now.",
+                    status_code=503,
+                ) from error
 
         if not expect_json:
             return None

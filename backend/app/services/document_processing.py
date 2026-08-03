@@ -172,6 +172,64 @@ class DocumentTextProcessingService:
             self._process_ocr_page(document, page)
         self._finalize_document(document)
 
+    def update_page_text(
+        self,
+        document_id: UUID,
+        page_number: int,
+        text: str,
+    ) -> DocumentRecord:
+        cleaned_text = text.strip()
+        if not cleaned_text:
+            raise EchoError(
+                "page_text_required",
+                "Enter the page text before saving.",
+                status_code=422,
+            )
+        document = self.load_document(document_id)
+        page = self._find_page(document, page_number)
+        now = datetime.now(UTC)
+        page.extracted_text = cleaned_text
+        page.processing_status = "completed"
+        page.error_message = None
+        page.updated_at = now
+        document.error_message = None
+        document.audio_segments = []
+        document.status = (
+            "text_ready"
+            if all(candidate.processing_status == "completed" for candidate in document.pages)
+            else "failed"
+        )
+        if document.status == "failed":
+            failed_pages = [
+                candidate
+                for candidate in document.pages
+                if candidate.processing_status == "failed"
+            ]
+            document.error_message = (
+                f"{len(failed_pages)} page"
+                f"{'s' if len(failed_pages) != 1 else ''} still need attention."
+            )
+        document.updated_at = now
+        self.metadata.save(self.document_directory(document.id), document)
+        return document
+
+    def mark_text_job_failed(
+        self,
+        document_id: UUID,
+        message: str = "Page text preparation stopped before it finished.",
+    ) -> None:
+        document = self.load_document(document_id)
+        now = datetime.now(UTC)
+        for page in document.pages:
+            if page.processing_status in {"pending", "running_ocr", "extracting"}:
+                page.processing_status = "failed"
+                page.error_message = message
+                page.updated_at = now
+        document.status = "failed"
+        document.error_message = message
+        document.updated_at = now
+        self.metadata.save(self.document_directory(document.id), document)
+
     def _complete_embedded_page(
         self,
         document: DocumentRecord,
@@ -355,9 +413,32 @@ class DocumentTextProcessingService:
         for index, line in enumerate(cleaned):
             if index >= 4 and index != len(cleaned) - 1:
                 continue
-            if RUNNING_HEADER_PATTERN.fullmatch(line.strip()):
+            if RUNNING_HEADER_PATTERN.fullmatch(
+                line.strip(),
+            ) or DocumentTextProcessingService._is_top_running_title(
+                line.strip(),
+                index=index,
+                lines=cleaned,
+            ):
                 cleaned[index] = ""
         return [line for line in cleaned if line.strip()]
+
+    @staticmethod
+    def _is_top_running_title(line: str, *, index: int, lines: list[str]) -> bool:
+        if index > 1:
+            return False
+        if len(line) > 16 or CJK_PROSE_PUNCTUATION_PATTERN.search(line):
+            return False
+        cjk_count = len(CJK_CHARACTER_PATTERN.findall(line))
+        if cjk_count < 4:
+            return False
+
+        following_lines = [candidate.strip() for candidate in lines[index + 1 : index + 4]]
+        return any(
+            len(CJK_CHARACTER_PATTERN.findall(candidate)) >= MEANINGFUL_CJK_PROSE_MINIMUM
+            and CJK_PROSE_PUNCTUATION_PATTERN.search(candidate)
+            for candidate in following_lines
+        )
 
     @classmethod
     def _replace_chart_blocks(

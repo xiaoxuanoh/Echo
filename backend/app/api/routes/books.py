@@ -1,4 +1,5 @@
 import json
+import logging
 import shutil
 import subprocess
 import tempfile
@@ -43,6 +44,7 @@ from app.schemas.documents import (
     OcrLineResult,
     PageCropRequest,
     PageCropResult,
+    PageTextUpdateRequest,
     PageTextPreviewResult,
     PdfPageResult,
     PdfUploadResult,
@@ -69,6 +71,7 @@ from app.services.tts import create_tts_provider
 
 
 router = APIRouter(prefix="/api/books", tags=["books"])
+logger = logging.getLogger(__name__)
 
 
 def _supabase_auth_enabled(settings: object) -> bool:
@@ -825,6 +828,15 @@ def _run_book_job(
 ) -> None:
     try:
         service.process_document(book_id)
+    except Exception:
+        logger.exception("Unexpected text job failure for document %s", book_id)
+        try:
+            service.mark_text_job_failed(book_id)
+        except Exception:
+            logger.exception(
+                "Could not persist failed text state for document %s",
+                book_id,
+            )
     finally:
         registry.finish(book_id)
 
@@ -837,6 +849,19 @@ def _run_page_retry(
 ) -> None:
     try:
         service.retry_page(book_id, page_number)
+    except Exception:
+        logger.exception(
+            "Unexpected page retry failure for document %s page %s",
+            book_id,
+            page_number,
+        )
+        try:
+            service.mark_text_job_failed(book_id)
+        except Exception:
+            logger.exception(
+                "Could not persist failed retry state for document %s",
+                book_id,
+            )
     finally:
         registry.finish(book_id)
 
@@ -848,6 +873,15 @@ def _run_audio_job(
 ) -> None:
     try:
         service.process_audio(book_id)
+    except Exception:
+        logger.exception("Unexpected audio job failure for document %s", book_id)
+        try:
+            service.mark_audio_job_failed(book_id)
+        except Exception:
+            logger.exception(
+                "Could not persist failed audio state for document %s",
+                book_id,
+            )
     finally:
         registry.finish(book_id)
 
@@ -1841,3 +1875,29 @@ def retry_page_text(
         processing_status=book.status,
         message=f"Echo is reading page {page_number} again.",
     )
+
+
+@router.patch(
+    "/{book_id}/pages/{page_number}/text",
+    response_model=DocumentDetailResult,
+)
+def update_page_text(
+    request: Request,
+    body: PageTextUpdateRequest,
+    book_id: UUID,
+    page_number: int = ApiPath(ge=1),
+) -> DocumentDetailResult:
+    settings = request.app.state.settings
+    user_id = _request_user_id(request)
+    metadata = _metadata_service(settings)
+    _load_document_for_user(settings.local_storage_path, book_id, user_id, metadata)
+    registry: LocalDocumentJobRegistry = request.app.state.document_job_registry
+    if registry.is_active(book_id):
+        raise EchoError(
+            "document_processing_active",
+            "Echo is already reading this upload's page text.",
+            status_code=409,
+        )
+    service = _processing_service(request, user_id)
+    book = service.update_page_text(book_id, page_number, body.text)
+    return _book_result(book, processing_active=False)

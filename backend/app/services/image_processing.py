@@ -85,8 +85,6 @@ class ImageProcessingService:
                     normalized = normalized.convert("RGB")
                 if crop_rectangle is not None:
                     normalized = self._crop_rectangle(normalized, crop_rectangle)
-                else:
-                    normalized = self._crop_likely_page_area(normalized)
                 normalized.save(destination, format="PNG", optimize=True)
         except EchoError:
             raise
