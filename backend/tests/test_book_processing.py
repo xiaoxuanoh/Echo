@@ -115,6 +115,33 @@ def test_ocr_cleanup_uses_target_language_for_chart_placeholder() -> None:
     assert fallback == "There is a chart here.\nThe market does not only move upward."
 
 
+def test_ocr_cleanup_removes_chart_axis_noise_with_period() -> None:
+    text = (
+        "圖1.2：SLV白銀ETF股價走勢\n"
+        "美元\n"
+        "90\n"
+        "70\n"
+        "50\n"
+        "成交量（萬股）\n"
+        "40000\n"
+        "-20000\n"
+        "latwalth.\n"
+        "5/2025\n"
+        "1/2026\n"
+        "下來。很多只買實體黃金、黃金期貨和黃金相關股票的人"
+    )
+
+    cleaned = DocumentTextProcessingService._clean_ocr_text(
+        text,
+        target_language="cantonese",
+    )
+
+    assert cleaned == (
+        "此處有一個圖表。\n"
+        "下來。很多只買實體黃金、黃金期貨和黃金相關股票的人"
+    )
+
+
 def test_ocr_cleanup_preserves_cjk_prose_after_chart_source() -> None:
     text = (
         "圖1.1：SPDR黄金ETF（GLD）股價走勢\n"

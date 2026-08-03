@@ -478,11 +478,18 @@ class DocumentTextProcessingService:
     def _is_probable_chart_support_line(line: str) -> bool:
         if CHART_SOURCE_PATTERN.match(line):
             return True
+        cjk_count = len(CJK_CHARACTER_PATTERN.findall(line))
+        if (
+            cjk_count == 0
+            and len(line) <= 24
+            and bool(CHART_SHORT_LABEL_PATTERN.fullmatch(line))
+        ):
+            return True
         if line[-1:] in ".。!?！？":
             return False
         if CJK_PROSE_PUNCTUATION_PATTERN.search(line):
             return False
-        if len(CJK_CHARACTER_PATTERN.findall(line)) >= MEANINGFUL_CJK_PROSE_MINIMUM:
+        if cjk_count >= MEANINGFUL_CJK_PROSE_MINIMUM:
             return False
         if len(line) <= 24:
             return True
