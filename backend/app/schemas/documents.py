@@ -92,6 +92,7 @@ class PageTextPreviewResult(BaseModel):
     lines: list[OcrLineResult]
     average_confidence: float | None
     processing_time_seconds: float
+    warnings: list[str] = Field(default_factory=list)
     preprocessing: Literal["normalized_page"] = "normalized_page"
     persisted: Literal[False] = False
 
@@ -133,6 +134,7 @@ class DocumentPageDetailResult(BaseModel):
     crop_bottom: float | None
     processing_status: DocumentPageProcessingStatus
     error_message: str | None
+    warning_messages: list[str] = Field(default_factory=list)
     updated_at: datetime
 
 

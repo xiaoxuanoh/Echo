@@ -47,6 +47,7 @@ class DocumentPageRecord(BaseModel):
     extraction_method: ExtractionMethod
     extracted_text: str = ""
     error_message: str | None = None
+    warning_messages: list[str] = Field(default_factory=list)
     crop_left: float | None = Field(default=None, ge=0, le=1)
     crop_top: float | None = Field(default=None, ge=0, le=1)
     crop_right: float | None = Field(default=None, ge=0, le=1)

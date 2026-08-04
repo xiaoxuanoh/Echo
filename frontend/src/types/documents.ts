@@ -93,6 +93,7 @@ export type DocumentPageDetail = {
   crop_bottom: number | null;
   processing_status: PageProcessingStatus;
   error_message: string | null;
+  warning_messages: string[];
   updated_at: string;
 };
 

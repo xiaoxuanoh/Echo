@@ -63,6 +63,10 @@ def test_supabase_metadata_save_writes_document_page_and_audio_rows(
     assert page_payload["crop_top"] == 0.2
     assert page_payload["crop_right"] == 0.9
     assert page_payload["crop_bottom"] == 0.8
+    assert page_payload["warning_messages"] == [
+        "This page contains chart or figure text. Please review the extracted "
+        "text before generating audio."
+    ]
     assert segment_payload["audio_storage_path"] == "audio/segment-0001.mp3"
 
 
@@ -88,6 +92,10 @@ def test_supabase_metadata_load_rebuilds_document_record(monkeypatch) -> None:
     assert document.user_id == USER_ID
     assert document.pages[0].crop_left == 0.1
     assert document.pages[0].processed_image_path == "pages/page-0001.png"
+    assert document.pages[0].warning_messages == [
+        "This page contains chart or figure text. Please review the extracted "
+        "text before generating audio."
+    ]
     assert document.audio_segments[0].audio_storage_path == "audio/segment-0001.mp3"
 
 
@@ -171,6 +179,10 @@ def _document_record() -> DocumentRecord:
                 processed_image_path="pages/page-0001.png",
                 extraction_method="ocr",
                 extracted_text="Prepared text.",
+                warning_messages=[
+                    "This page contains chart or figure text. Please review the "
+                    "extracted text before generating audio."
+                ],
                 crop_left=0.1,
                 crop_top=0.2,
                 crop_right=0.9,
@@ -231,6 +243,10 @@ def _page_row() -> dict[str, object]:
         "extraction_method": "ocr",
         "extracted_text": "Prepared text.",
         "error_message": None,
+        "warning_messages": [
+            "This page contains chart or figure text. Please review the extracted "
+            "text before generating audio."
+        ],
         "crop_left": 0.1,
         "crop_top": 0.2,
         "crop_right": 0.9,

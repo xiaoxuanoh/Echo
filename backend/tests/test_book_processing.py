@@ -224,6 +224,108 @@ def test_ocr_result_cleanup_removes_noise_around_chart_and_body() -> None:
     )
 
 
+def test_ocr_result_cleanup_collapses_figure_layout_text_before_body() -> None:
+    lines = [
+        OcrLine(
+            text="圖1.3：白銀 ETF 期權合約價格起跌",
+            confidence=0.95,
+            y_min=80,
+            x_min=160,
+            x_max=620,
+        ),
+        OcrLine(
+            text="目標是每日投資收益相當於彭博白銀指數單",
+            confidence=0.91,
+            y_min=300,
+            x_min=390,
+            x_max=700,
+        ),
+        OcrLine(
+            text="2月27日到期、行使價75美元的買權",
+            confidence=0.93,
+            y_min=330,
+            x_min=110,
+            x_max=350,
+        ),
+        OcrLine(
+            text="日表現的兩倍反向（-2X)",
+            confidence=0.90,
+            y_min=360,
+            x_min=390,
+            x_max=620,
+        ),
+        OcrLine(
+            text="3月20日到期、行使價3美元的買權",
+            confidence=0.93,
+            y_min=390,
+            x_min=390,
+            x_max=650,
+        ),
+        OcrLine(
+            text="白銀價格從2025年初每盎斯30美元上漲至2026年1月的每盎斯115美元，這",
+            confidence=0.98,
+            y_min=510,
+            x_min=90,
+            x_max=760,
+        ),
+        OcrLine(
+            text="一短期且幅度巨大的上漲吸引了更多投機性甚至錯失恐懼症（Fear of Missing",
+            confidence=0.97,
+            y_min=545,
+            x_min=90,
+            x_max=780,
+        ),
+    ]
+
+    cleaned = DocumentTextProcessingService._clean_ocr_result(
+        lines,
+        target_language="cantonese",
+    )
+
+    assert cleaned == (
+        "此處有一個圖表。\n"
+        "白銀價格從2025年初每盎斯30美元上漲至2026年1月的每盎斯115美元，這\n"
+        "一短期且幅度巨大的上漲吸引了更多投機性甚至錯失恐懼症（Fear of Missing"
+    )
+
+
+def test_ocr_result_cleanup_preserves_short_body_lines_without_chart_context() -> None:
+    lines = [
+        OcrLine(
+            text="低目標價位的股票，組合起來既達到穩守突擊效果，降低",
+            confidence=0.98,
+            y_min=620,
+            x_min=90,
+            x_max=760,
+        ),
+        OcrLine(
+            text="對短期極端波動的影響，甚至增加長期回報和跑贏大市的",
+            confidence=0.98,
+            y_min=660,
+            x_min=90,
+            x_max=760,
+        ),
+        OcrLine(
+            text="潛在機會。",
+            confidence=0.99,
+            y_min=700,
+            x_min=90,
+            x_max=240,
+        ),
+    ]
+
+    cleaned = DocumentTextProcessingService._clean_ocr_result(
+        lines,
+        target_language="cantonese",
+    )
+
+    assert cleaned == (
+        "低目標價位的股票，組合起來既達到穩守突擊效果，降低\n"
+        "對短期極端波動的影響，甚至增加長期回報和跑贏大市的\n"
+        "潛在機會。"
+    )
+
+
 def test_processes_all_image_pages_in_order(
     client: TestClient,
     storage_path: Path,
@@ -355,6 +457,192 @@ def test_updates_failed_page_text_manually(
     assert detail["pages"][0]["processing_status"] == "completed"
     assert detail["pages"][0]["error_message"] is None
     assert detail["pages"][0]["extracted_text"].startswith("讀畢本章")
+
+
+def test_uncertain_ocr_page_requires_manual_review(
+    client: TestClient,
+    storage_path: Path,
+) -> None:
+    warning = (
+        "Echo found possible text near the top of this page, but it may contain "
+        "OCR mistakes. Please review this page before listening."
+    )
+
+    class WarningProvider:
+        def read_page(self, _: Path) -> OcrResult:
+            return OcrResult(
+                provider="paddleocr",
+                text="甚至反向賺更多。",
+                lines=[OcrLine(text="甚至反向賺更多。", confidence=0.98)],
+                average_confidence=0.98,
+                processing_time_seconds=0.01,
+                warnings=[warning],
+            )
+
+    upload = client.post(
+        "/api/books/images",
+        files=[("files", ("page.png", image_bytes((20, 30)), "image/png"))],
+        data={"rotations": "[0]"},
+    ).json()
+    document_id = LocalDocumentMetadataService().load(storage_path / upload["book_id"]).id
+    service = DocumentTextProcessingService(
+        storage_root=storage_path,
+        ocr_provider=WarningProvider(),
+    )
+
+    service.process_document(document_id)
+
+    saved = service.load_document(document_id)
+    assert saved.status == "failed"
+    assert saved.pages[0].processing_status == "failed"
+    assert saved.pages[0].extracted_text == "甚至反向賺更多。"
+    assert saved.pages[0].error_message == warning
+    assert saved.pages[0].warning_messages == []
+
+
+def test_figure_only_ocr_warning_does_not_block_usable_page(
+    client: TestClient,
+    storage_path: Path,
+) -> None:
+    warning = (
+        "Echo found possible text near the top of this page, but it may contain "
+        "OCR mistakes. Please review this page before listening."
+    )
+
+    class FigureWarningProvider:
+        def read_page(self, _: Path) -> OcrResult:
+            lines = [
+                OcrLine(
+                    text="圖1.3：白銀 ETF 期權合約價格起跌",
+                    confidence=0.95,
+                    y_min=80,
+                    x_min=160,
+                    x_max=620,
+                ),
+                OcrLine(
+                    text="目標是每日投資收益相當於彭博白銀指數單",
+                    confidence=0.91,
+                    y_min=300,
+                    x_min=390,
+                    x_max=700,
+                ),
+                OcrLine(
+                    text="2月27日到期、行使價75美元的買權",
+                    confidence=0.93,
+                    y_min=330,
+                    x_min=110,
+                    x_max=350,
+                ),
+                OcrLine(
+                    text="白銀價格從2025年初每盎斯30美元上漲至2026年1月的每盎斯115美元，這",
+                    confidence=0.98,
+                    y_min=510,
+                    x_min=90,
+                    x_max=760,
+                ),
+            ]
+            return OcrResult(
+                provider="paddleocr",
+                text="\n".join(line.text for line in lines),
+                lines=lines,
+                average_confidence=0.95,
+                processing_time_seconds=0.01,
+                warnings=[warning],
+            )
+
+    upload = client.post(
+        "/api/books/images",
+        files=[("files", ("page.png", image_bytes((20, 30)), "image/png"))],
+        data={"rotations": "[0]"},
+    ).json()
+    document_id = LocalDocumentMetadataService().load(storage_path / upload["book_id"]).id
+    service = DocumentTextProcessingService(
+        storage_root=storage_path,
+        ocr_provider=FigureWarningProvider(),
+    )
+
+    service.process_document(document_id)
+
+    saved = service.load_document(document_id)
+    assert saved.status == "text_ready"
+    assert saved.pages[0].processing_status == "completed"
+    assert saved.pages[0].error_message is None
+    assert saved.pages[0].warning_messages == [
+        "This page contains chart or figure text. Please review the extracted "
+        "text before generating audio."
+    ]
+    assert saved.pages[0].extracted_text == (
+        "There is a chart here.\n"
+        "白銀價格從2025年初每盎斯30美元上漲至2026年1月的每盎斯115美元，這"
+    )
+
+
+def test_figure_page_without_ocr_warning_still_recommends_review(
+    client: TestClient,
+    storage_path: Path,
+) -> None:
+    class FigureProvider:
+        def read_page(self, _: Path) -> OcrResult:
+            lines = [
+                OcrLine(
+                    text="圖1.3：白銀 ETF 期權合約價格起跌",
+                    confidence=0.95,
+                    y_min=80,
+                    x_min=160,
+                    x_max=620,
+                ),
+                OcrLine(
+                    text="目標是每日投資收益相當於彭博白銀指數單",
+                    confidence=0.91,
+                    y_min=300,
+                    x_min=390,
+                    x_max=700,
+                ),
+                OcrLine(
+                    text="2月27日到期、行使價75美元的買權",
+                    confidence=0.93,
+                    y_min=330,
+                    x_min=110,
+                    x_max=350,
+                ),
+                OcrLine(
+                    text="白銀價格從2025年初每盎斯30美元上漲至2026年1月的每盎斯115美元，這",
+                    confidence=0.98,
+                    y_min=510,
+                    x_min=90,
+                    x_max=760,
+                ),
+            ]
+            return OcrResult(
+                provider="paddleocr",
+                text="\n".join(line.text for line in lines),
+                lines=lines,
+                average_confidence=0.95,
+                processing_time_seconds=0.01,
+                warnings=[],
+            )
+
+    upload = client.post(
+        "/api/books/images",
+        files=[("files", ("page.png", image_bytes((20, 30)), "image/png"))],
+        data={"rotations": "[0]"},
+    ).json()
+    document_id = LocalDocumentMetadataService().load(storage_path / upload["book_id"]).id
+    service = DocumentTextProcessingService(
+        storage_root=storage_path,
+        ocr_provider=FigureProvider(),
+    )
+
+    service.process_document(document_id)
+
+    saved = service.load_document(document_id)
+    assert saved.status == "text_ready"
+    assert saved.pages[0].processing_status == "completed"
+    assert saved.pages[0].error_message is None
+    assert saved.pages[0].warning_messages == [
+        "This page contains chart or figure text. Please review the extracted "
+        "text before generating audio."
+    ]
 
 
 def test_saves_failure_then_successfully_retries(

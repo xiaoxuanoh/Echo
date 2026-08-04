@@ -446,6 +446,7 @@ def _book_result(
                 crop_bottom=page.crop_bottom,
                 processing_status=page.processing_status,
                 error_message=page.error_message,
+                warning_messages=page.warning_messages,
                 updated_at=page.updated_at,
             )
             for page in sorted(book.pages, key=lambda item: item.page_number)
@@ -938,6 +939,7 @@ def preview_page_text(
         ],
         average_confidence=result.average_confidence,
         processing_time_seconds=result.processing_time_seconds,
+        warnings=result.warnings or [],
     )
 
 

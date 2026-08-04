@@ -530,7 +530,16 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
                 )}
               </div>
               {page.error_message && (
-                <p className="mt-3 text-sm text-[#783a33]">{page.error_message}</p>
+                <p className="mt-3 rounded-lg border border-[#d2c69e] bg-[#fff9e8] p-3 text-sm text-[#6d5a22]">
+                  {page.error_message}
+                </p>
+              )}
+              {page.warning_messages.length > 0 && (
+                <div className="mt-3 rounded-lg border border-[#d2c69e] bg-[#fff9e8] p-3 text-sm text-[#6d5a22]">
+                  {page.warning_messages.map((message) => (
+                    <p key={message}>{message}</p>
+                  ))}
+                </div>
               )}
               {(page.extracted_text || page.processing_status === "failed") && (
                 <details className="mt-4 rounded-xl bg-[#f8f6f0] p-4">

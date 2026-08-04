@@ -45,6 +45,37 @@ CHART_PLACEHOLDERS = {
     "mandarin": "此处有一个图表。",
     "english": "There is a chart here.",
 }
+FIGURE_WARNING_NOTES = {
+    "cantonese": (
+        "This page contains chart or figure text. Please review the extracted "
+        "text before generating audio."
+    ),
+    "mandarin": (
+        "This page contains chart or figure text. Please review the extracted "
+        "text before generating audio."
+    ),
+    "english": (
+        "This page contains chart or figure text. Please review the extracted "
+        "text before generating audio."
+    ),
+}
+
+
+class PreparedOcrLine:
+    def __init__(
+        self,
+        *,
+        text: str,
+        confidence: float | None = None,
+        y_min: float | None = None,
+        x_min: float | None = None,
+        x_max: float | None = None,
+    ) -> None:
+        self.text = text
+        self.confidence = confidence
+        self.y_min = y_min
+        self.x_min = x_min
+        self.x_max = x_max
 
 
 class LocalDocumentJobRegistry:
@@ -141,6 +172,7 @@ class DocumentTextProcessingService:
         now = datetime.now(UTC)
         page.processing_status = "pending"
         page.error_message = None
+        page.warning_messages = []
         page.updated_at = now
         document.status = (
             "running_ocr" if page.extraction_method == "ocr" else "extracting_text"
@@ -191,6 +223,7 @@ class DocumentTextProcessingService:
         page.extracted_text = cleaned_text
         page.processing_status = "completed"
         page.error_message = None
+        page.warning_messages = []
         page.updated_at = now
         document.error_message = None
         document.audio_segments = []
@@ -248,6 +281,7 @@ class DocumentTextProcessingService:
     def _process_ocr_page(self, document: DocumentRecord, page: DocumentPageRecord) -> None:
         page.processing_status = "running_ocr"
         page.error_message = None
+        page.warning_messages = []
         page.updated_at = datetime.now(UTC)
         document.status = "running_ocr"
         document.updated_at = page.updated_at
@@ -263,12 +297,28 @@ class DocumentTextProcessingService:
                     "no_page_text",
                     "Echo could not find readable text on this page.",
                 )
-            page.extracted_text = self._clean_ocr_result(
+            cleaned_text = self._clean_ocr_result(
                 result.lines,
                 target_language=document.target_language,
             )
-            page.processing_status = "completed"
-            page.error_message = None
+            page.extracted_text = cleaned_text
+            warnings = result.warnings or []
+            if self._ocr_warnings_require_manual_review(
+                warnings,
+                cleaned_text=cleaned_text,
+                target_language=document.target_language,
+            ):
+                page.processing_status = "failed"
+                page.error_message = warnings[0]
+                page.warning_messages = []
+            else:
+                page.processing_status = "completed"
+                page.error_message = None
+                page.warning_messages = self._non_blocking_ocr_notes(
+                    warnings,
+                    cleaned_text=cleaned_text,
+                    target_language=document.target_language,
+                )
         except EchoError as error:
             page.processing_status = "failed"
             page.error_message = error.message
@@ -369,13 +419,72 @@ class DocumentTextProcessingService:
         *,
         target_language: str | None,
     ) -> str:
-        text_lines = cls._prepare_ocr_lines(lines)
-        cleaned_lines = cls._replace_chart_blocks(
-            text_lines,
+        prepared_lines = cls._prepare_ocr_layout_lines(lines)
+        cleaned_lines = cls._replace_layout_figure_blocks(
+            prepared_lines,
             target_language=target_language,
         )
         cleaned_lines = cls._remove_short_orphan_lines(cleaned_lines)
         return "\n".join(line for line in cleaned_lines if line.strip()).strip()
+
+    @classmethod
+    def _ocr_warnings_require_manual_review(
+        cls,
+        warnings: list[str],
+        *,
+        cleaned_text: str,
+        target_language: str | None,
+    ) -> bool:
+        if not warnings:
+            return False
+        if cls._looks_like_usable_figure_page(
+            cleaned_text,
+            target_language=target_language,
+        ):
+            return False
+        return True
+
+    @classmethod
+    def _looks_like_usable_figure_page(
+        cls,
+        cleaned_text: str,
+        *,
+        target_language: str | None,
+    ) -> bool:
+        lines = [line.strip() for line in cleaned_text.splitlines() if line.strip()]
+        if len(lines) < 2:
+            return False
+        placeholder = cls._chart_placeholder(target_language)
+        if lines[0] != placeholder:
+            return False
+        return any(cls._is_meaningful_prose_line(line) for line in lines[1:])
+
+    @classmethod
+    def _non_blocking_ocr_notes(
+        cls,
+        warnings: list[str],
+        *,
+        cleaned_text: str,
+        target_language: str | None,
+    ) -> list[str]:
+        if cls._looks_like_usable_figure_page(
+            cleaned_text,
+            target_language=target_language,
+        ):
+            return [cls._figure_warning_note(target_language)]
+        if not warnings:
+            return []
+        return warnings
+
+    @staticmethod
+    def _is_meaningful_prose_line(line: str) -> bool:
+        cjk_count = len(CJK_CHARACTER_PATTERN.findall(line))
+        if cjk_count >= MEANINGFUL_CJK_PROSE_MINIMUM and (
+            CJK_PROSE_PUNCTUATION_PATTERN.search(line) or len(line) >= 28
+        ):
+            return True
+        latin_count = len(LATIN_CHARACTER_PATTERN.findall(line))
+        return latin_count >= 30 and any(character in line for character in ".?!,;:")
 
     @classmethod
     def _prepare_ocr_text_lines(cls, text: str) -> list[str]:
@@ -385,14 +494,41 @@ class DocumentTextProcessingService:
 
     @classmethod
     def _prepare_ocr_lines(cls, lines: list[OcrLine]) -> list[str]:
-        kept_lines = [
-            line.text
-            for line in lines
-            if cls._should_keep_confident_line(line)
-        ]
+        kept_lines = [line.text for line in lines if cls._should_keep_confident_line(line)]
         return cls._remove_running_headers(
             cls._remove_isolated_page_number_lines("\n".join(kept_lines)).splitlines()
         )
+
+    @classmethod
+    def _prepare_ocr_layout_lines(cls, lines: list[OcrLine]) -> list[PreparedOcrLine]:
+        kept_lines = [
+            PreparedOcrLine(
+                text=line.text,
+                confidence=line.confidence,
+                y_min=line.y_min,
+                x_min=line.x_min,
+                x_max=line.x_max,
+            )
+            for line in lines
+            if cls._should_keep_confident_line(line)
+        ]
+        text_lines = cls._remove_running_headers(
+            cls._remove_isolated_page_number_lines(
+                "\n".join(line.text for line in kept_lines)
+            ).splitlines()
+        )
+        remaining_texts: dict[str, int] = {}
+        for text in text_lines:
+            remaining_texts[text] = remaining_texts.get(text, 0) + 1
+
+        prepared: list[PreparedOcrLine] = []
+        for line in kept_lines:
+            count = remaining_texts.get(line.text, 0)
+            if count <= 0:
+                continue
+            prepared.append(line)
+            remaining_texts[line.text] = count - 1
+        return prepared
 
     @staticmethod
     def _should_keep_confident_line(line: OcrLine) -> bool:
@@ -470,9 +606,122 @@ class DocumentTextProcessingService:
 
         return output
 
+    @classmethod
+    def _replace_layout_figure_blocks(
+        cls,
+        lines: list[PreparedOcrLine],
+        *,
+        target_language: str | None,
+    ) -> list[str]:
+        output: list[str] = []
+        placeholder = cls._chart_placeholder(target_language)
+        index = 0
+
+        while index < len(lines):
+            line = lines[index]
+            stripped = line.text.strip()
+            if not stripped:
+                index += 1
+                continue
+
+            if CHART_START_PATTERN.match(stripped):
+                if not output or output[-1] != placeholder:
+                    output.append(placeholder)
+                index = cls._skip_layout_figure_lines(lines, index + 1)
+                continue
+
+            if cls._starts_chart_like_layout_block(lines, index):
+                if not output or output[-1] != placeholder:
+                    output.append(placeholder)
+                index = cls._skip_layout_figure_lines(lines, index)
+                continue
+
+            output.append(line.text)
+            index += 1
+
+        return output
+
+    @classmethod
+    def _starts_chart_like_layout_block(
+        cls,
+        lines: list[PreparedOcrLine],
+        index: int,
+    ) -> bool:
+        if index > 8:
+            return False
+        candidate = lines[index]
+        if candidate.y_min is None:
+            return False
+        nearby = [
+            line
+            for line in lines[index : min(len(lines), index + 8)]
+            if line.y_min is not None and line.y_min <= candidate.y_min + 180
+        ]
+        if len(nearby) < 3:
+            return False
+        chart_like_count = sum(
+            1 for line in nearby if cls._is_probable_layout_figure_line(line.text)
+        )
+        has_figure_evidence = any(
+            cls._has_layout_figure_evidence(line.text) for line in nearby
+        )
+        return chart_like_count >= 3 and has_figure_evidence
+
+    @classmethod
+    def _skip_layout_figure_lines(
+        cls,
+        lines: list[PreparedOcrLine],
+        start_index: int,
+    ) -> int:
+        index = start_index
+        while index < len(lines):
+            stripped = lines[index].text.strip()
+            if not stripped:
+                index += 1
+                continue
+            if cls._is_probable_layout_figure_line(stripped):
+                index += 1
+                continue
+            break
+        return index
+
+    @classmethod
+    def _is_probable_layout_figure_line(cls, line: str) -> bool:
+        if CHART_SOURCE_PATTERN.match(line):
+            return True
+        if CHART_START_PATTERN.match(line):
+            return True
+        if cls._is_probable_chart_support_line(line):
+            return True
+        cjk_count = len(CJK_CHARACTER_PATTERN.findall(line))
+        digit_count = sum(character.isdigit() for character in line)
+        if digit_count >= 2 and len(line) <= 36:
+            return True
+        if (
+            cjk_count >= MEANINGFUL_CJK_PROSE_MINIMUM
+            and len(line) <= 32
+            and not CJK_PROSE_PUNCTUATION_PATTERN.search(line)
+        ):
+            return True
+        return False
+
+    @staticmethod
+    def _has_layout_figure_evidence(line: str) -> bool:
+        if CHART_SOURCE_PATTERN.match(line) or CHART_START_PATTERN.match(line):
+            return True
+        digit_count = sum(character.isdigit() for character in line)
+        return digit_count >= 2 and len(line) <= 48
+
     @staticmethod
     def _chart_placeholder(target_language: str | None) -> str:
         return CHART_PLACEHOLDERS.get(target_language or "", CHART_PLACEHOLDERS["english"])
+
+    @staticmethod
+    def _figure_warning_note(target_language: str | None) -> str:
+        return FIGURE_WARNING_NOTES.get(
+            target_language or "",
+            FIGURE_WARNING_NOTES["english"],
+        )
 
     @staticmethod
     def _is_probable_chart_support_line(line: str) -> bool:
