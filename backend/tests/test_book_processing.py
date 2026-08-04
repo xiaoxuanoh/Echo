@@ -289,6 +289,39 @@ def test_ocr_result_cleanup_collapses_figure_layout_text_before_body() -> None:
     )
 
 
+def test_ocr_result_cleanup_preserves_body_lines_that_only_look_chart_like() -> None:
+    lines = [
+        OcrLine(
+            text="這一段先提到下方圖表，但本身不是圖表標籤。",
+            confidence=0.98,
+            y_min=90,
+            x_min=90,
+            x_max=760,
+        ),
+        OcrLine(text="美元", confidence=0.95, y_min=120, x_min=680, x_max=740),
+        OcrLine(text="80美元", confidence=0.95, y_min=160, x_min=700, x_max=760),
+        OcrLine(text="70美元", confidence=0.95, y_min=200, x_min=700, x_max=760),
+        OcrLine(text="2025年", confidence=0.95, y_min=240, x_min=500, x_max=590),
+        OcrLine(
+            text="真正正文從這裡繼續，應該可以正常完成清理。",
+            confidence=0.98,
+            y_min=430,
+            x_min=90,
+            x_max=760,
+        ),
+    ]
+
+    cleaned = DocumentTextProcessingService._clean_ocr_result(
+        lines,
+        target_language="english",
+    )
+
+    assert cleaned == (
+        "這一段先提到下方圖表，但本身不是圖表標籤。\n"
+        "真正正文從這裡繼續，應該可以正常完成清理。"
+    )
+
+
 def test_ocr_result_cleanup_preserves_short_body_lines_without_chart_context() -> None:
     lines = [
         OcrLine(

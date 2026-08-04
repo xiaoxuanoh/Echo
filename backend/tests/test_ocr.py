@@ -150,7 +150,7 @@ def test_paddle_ocr_prepends_unique_lines_from_top_slice(tmp_path: Path) -> None
         "期權不一定是賭博，它也可以是一個非常重要的風險管理",
         "工具，也是大戶投資者的日常工具。",
     ]
-    assert pipeline.calls == 9
+    assert pipeline.calls == 8
 
 
 def test_paddle_ocr_skips_auxiliary_passes_when_top_layout_looks_complete(
@@ -198,46 +198,7 @@ def test_paddle_ocr_skips_auxiliary_passes_when_top_layout_looks_complete(
         "慌了手腳，急忙賣出止損。金價於是從5600美元高點回",
         "落約10%，白銀更誇張，一周內跌逾30%，從121美元瀉",
     ]
-    assert pipeline.calls == ["page.png", "ocr-enhanced-page.png"]
-
-
-def test_paddle_ocr_enhanced_page_adds_only_missing_prefix_lines() -> None:
-    full_lines = [
-        OcrLine(
-            text="沽期權的投資者更笑得合不攏嘴。【圖1.3】",
-            confidence=0.96,
-            y_min=330,
-            x_min=100,
-            x_max=680,
-        )
-    ]
-    enhanced_lines = [
-        OcrLine(
-            text="正浪潮中價值暴增，短短幾天就把前面的獲利再次鎖定，",
-            confidence=0.94,
-            y_min=230,
-            x_min=100,
-            x_max=860,
-        ),
-        OcrLine(
-            text="這就是期權的第二大魔法：雙向獲利+靈活切換。黃金和",
-            confidence=0.99,
-            y_min=420,
-            x_min=100,
-            x_max=880,
-        ),
-    ]
-
-    merged = PaddleOcrProvider._merge_enhanced_page_lines(
-        full_lines,
-        enhanced_lines,
-        image_height=1000,
-    )
-
-    assert [line.text for line in merged] == [
-        "正浪潮中價值暴增，短短幾天就把前面的獲利再次鎖定，",
-        "沽期權的投資者更笑得合不攏嘴。【圖1.3】",
-    ]
+    assert pipeline.calls == ["page.png"]
 
 
 def test_paddle_ocr_recovers_missing_first_body_line_from_enhanced_top_body_slice(
@@ -302,7 +263,6 @@ def test_paddle_ocr_recovers_missing_first_body_line_from_enhanced_top_body_slic
     ]
     assert pipeline.calls == [
         "page.png",
-        "ocr-enhanced-page.png",
         "ocr-top-slice.png",
         "ocr-top-body-slice.png",
         "ocr-first-body-line-band-1.png",

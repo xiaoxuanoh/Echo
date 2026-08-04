@@ -630,12 +630,6 @@ class DocumentTextProcessingService:
                 index = cls._skip_layout_figure_lines(lines, index + 1)
                 continue
 
-            if cls._starts_chart_like_layout_block(lines, index):
-                if not output or output[-1] != placeholder:
-                    output.append(placeholder)
-                index = cls._skip_layout_figure_lines(lines, index)
-                continue
-
             output.append(line.text)
             index += 1
 

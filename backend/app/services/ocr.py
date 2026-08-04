@@ -86,7 +86,6 @@ class PaddleOcrProvider:
     top_slice_height_ratio = 0.45
     top_slice_padding_ratio = 0.12
     top_slice_scale = 2
-    enhanced_page_min_confidence = 0.88
     top_body_slice_top_ratio = 0.12
     top_body_slice_bottom_ratio = 0.58
     top_body_slice_scale = 3
@@ -229,53 +228,6 @@ class PaddleOcrProvider:
         if second.confidence == first.confidence and len(second.text) > len(first.text):
             return second
         return first
-
-    @classmethod
-    def _merge_enhanced_page_lines(
-        cls,
-        full_lines: list[OcrLine],
-        enhanced_lines: list[OcrLine],
-        *,
-        image_height: int | None = None,
-    ) -> list[OcrLine]:
-        if not full_lines:
-            return sorted(
-                enhanced_lines,
-                key=lambda line: line.y_min if line.y_min is not None else float("inf"),
-            )
-        first_body_y = cls._first_body_line_y(full_lines)
-        line_gap = cls._estimated_line_gap(full_lines, image_height or 1000)
-        merged = list(full_lines)
-        for line in enhanced_lines:
-            if cls._is_auxiliary_noise_line(line):
-                continue
-            similar_index = next(
-                (
-                    index
-                    for index, existing_line in enumerate(merged)
-                    if cls._is_similar_line(line.text, existing_line.text)
-                ),
-                None,
-            )
-            if similar_index is not None:
-                merged[similar_index] = cls._better_recovered_line(
-                    merged[similar_index],
-                    line,
-                )
-                continue
-            if first_body_y is None or line.y_min is None:
-                continue
-            if line.y_min >= first_body_y - max(8, line_gap * 0.20):
-                continue
-            if line.confidence < cls.enhanced_page_min_confidence:
-                continue
-            if not cls._is_plausible_recovered_body_line(line):
-                continue
-            merged.append(line)
-        return sorted(
-            merged,
-            key=lambda line: line.y_min if line.y_min is not None else float("inf"),
-        )
 
     @classmethod
     def _is_trustworthy_auxiliary_line(
@@ -786,26 +738,6 @@ class PaddleOcrProvider:
         enhanced = ImageEnhance.Contrast(enhanced).enhance(1.50)
         return ImageEnhance.Sharpness(enhanced).enhance(1.20)
 
-    @staticmethod
-    def _enhance_page_image(image: Image.Image) -> Image.Image:
-        enhanced = ImageOps.autocontrast(image)
-        enhanced = ImageEnhance.Contrast(enhanced).enhance(1.18)
-        return ImageEnhance.Sharpness(enhanced).enhance(1.08)
-
-    def _read_enhanced_page_lines(self, image_path: Path) -> list[OcrLine]:
-        try:
-            with Image.open(image_path) as image:
-                normalized = ImageOps.exif_transpose(image)
-                if normalized.mode not in {"RGB", "L"}:
-                    normalized = normalized.convert("RGB")
-                enhanced = self._enhance_page_image(normalized)
-                with tempfile.TemporaryDirectory() as temp_directory:
-                    enhanced_path = Path(temp_directory) / "ocr-enhanced-page.png"
-                    enhanced.save(enhanced_path, format="PNG")
-                    return self._predict_lines(enhanced_path)
-        except OSError:
-            return []
-
     def _predict_cropped_lines(
         self,
         image: Image.Image,
@@ -1050,12 +982,6 @@ class PaddleOcrProvider:
             except OSError:
                 image_width = None
                 image_height = None
-            enhanced_lines = self._read_enhanced_page_lines(image_path)
-            lines = self._merge_enhanced_page_lines(
-                lines,
-                enhanced_lines,
-                image_height=image_height,
-            )
             top_lines, visual_bands = self._read_top_slice_lines(image_path, lines)
             lines, warnings = self._merge_top_slice_lines(
                 top_lines,
