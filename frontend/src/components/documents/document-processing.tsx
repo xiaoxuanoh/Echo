@@ -59,6 +59,19 @@ const textProcessingStatuses = new Set<DocumentProcessingStatus>([
   "running_ocr",
 ]);
 
+function documentStepLabel(
+  status: DocumentProcessingStatus,
+  canResumeAudio: boolean,
+): string {
+  if (status === "text_ready" || status === "generating_audio" || canResumeAudio) {
+    return "Step 3 of 3: Create listening audio";
+  }
+  if (status === "ready") {
+    return "Step 3 of 3: Listen to audio";
+  }
+  return "Step 2 of 3: Prepare page text";
+}
+
 export function DocumentProcessing({ documentId }: { documentId: string }) {
   const { session } = useAuthSession();
   const accessToken = session?.access_token ?? null;
@@ -319,6 +332,17 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
     document.processing_status === "generating_audio"
       ? `${audioProgress.completed} of ${audioProgress.total || "…"} audio parts ready`
       : `${document.completed_pages} of ${document.total_pages} pages ready`;
+  const stepLabel = documentStepLabel(document.processing_status, canResumeAudio);
+  const statusProgressLabel = `${documentStatusLabels[document.processing_status]} · ${progressLabel}`;
+  const listenActionLabel = acting
+    ? "Starting audio..."
+    : document.processing_status === "generating_audio" && document.processing_active
+      ? "Creating audio..."
+    : !canStartAudio
+      ? "Waiting for page text"
+      : canResumeAudio
+        ? "Continue creating audio"
+        : "Create listening audio";
 
   return (
     <div className="mt-3">
@@ -326,12 +350,12 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
         <div className="mt-2 flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-sm font-bold tracking-[0.12em] text-accent uppercase">
-              {documentStatusLabels[document.processing_status]}
+              {stepLabel}
             </p>
             <h1 className="mt-2 text-3xl font-semibold sm:text-4xl">
               {document.title}
             </h1>
-            <p className="mt-1 text-muted">{progressLabel}</p>
+            <p className="mt-1 text-muted">{statusProgressLabel}</p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <button
@@ -347,7 +371,7 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
                 href={`/books/${document.id}/listen`}
                 className="inline-flex min-h-12 items-center rounded-xl bg-accent px-6 py-3 font-semibold text-white shadow-sm transition-colors duration-150 hover:bg-accent-dark"
               >
-                Listen now
+                Listen to audio
               </Link>
             ) : (
               <button
@@ -357,7 +381,7 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
                 className="min-h-12 rounded-xl bg-accent px-6 py-3 font-semibold text-white shadow-sm transition-colors duration-150 hover:bg-accent-dark disabled:cursor-not-allowed disabled:border disabled:border-border disabled:bg-[#edf1f0] disabled:text-muted disabled:shadow-none"
                 aria-describedby={isPreparingText ? "listen-now-waiting" : undefined}
               >
-                Listen now
+                {listenActionLabel}
               </button>
             )}
           </div>
@@ -377,7 +401,7 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
 
         {isPreparingText && (
           <p id="listen-now-waiting" className="mt-4 text-sm text-muted" aria-live="polite">
-            Echo is reading your pages first. Listen now will unlock when the text is ready.
+            Echo is reading your pages first. Audio creation will unlock when the text is ready.
           </p>
         )}
         {isAwaitingOcrReview && (
@@ -420,7 +444,7 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
         )}
         {document.processing_status === "text_ready" && (
           <div className="mt-4 rounded-xl border border-[#a9c5b3] bg-[#f4faf5] p-4 text-[#376247]">
-            <p>All page text is prepared. Select Listen now to create listening audio.</p>
+            <p>All page text is prepared. Select Create listening audio to continue.</p>
           </div>
         )}
         {canResumeAudio && (

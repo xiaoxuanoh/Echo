@@ -35,6 +35,7 @@ const uploadedDocument = {
       extracted_character_count: 0,
       processing_status: "pending",
       error_message: null,
+      warning_messages: [],
       updated_at: "2026-07-22T00:00:00Z",
     },
   ],
@@ -128,17 +129,17 @@ describe("document text preparation", () => {
     await waitFor(() => expect(fetchMock.mock.calls[1][0]).toContain("/process-text"));
     expect(
       await screen.findByText(
-        "All page text is prepared. Select Listen now to create listening audio.",
+        "All page text is prepared. Select Create listening audio to continue.",
       ),
     ).toBeVisible();
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Listen now" }),
+      screen.getByRole("button", { name: "Create listening audio" }),
     );
 
     expect(await screen.findByText("Listening audio is ready.")).toBeVisible();
-    expect(screen.getByText("1 of 1 pages ready")).toBeVisible();
-    expect(screen.getByRole("link", { name: "Listen now" })).toBeVisible();
+    expect(screen.getByText(/1 of 1 pages ready/)).toBeVisible();
+    expect(screen.getByRole("link", { name: "Listen to audio" })).toBeVisible();
     expect(fetchMock).toHaveBeenCalledTimes(5);
     expect(fetchMock.mock.calls[1][0]).toContain("/process-text");
     expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: "POST" });
@@ -184,11 +185,11 @@ describe("document text preparation", () => {
 
     render(<DocumentProcessing documentId="document-id" />);
     fireEvent.click(
-      await screen.findByRole("button", { name: "Listen now" }),
+      await screen.findByRole("button", { name: "Create listening audio" }),
     );
 
     expect(await screen.findByText("Listening audio is ready.")).toBeVisible();
-    expect(screen.getByRole("link", { name: "Listen now" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Listen to audio" })).toHaveAttribute(
       "href",
       "/books/document-id/listen",
     );
@@ -207,10 +208,10 @@ describe("document text preparation", () => {
 
     render(<DocumentProcessing documentId="document-id" />);
 
-    expect(await screen.findByRole("button", { name: "Listen now" })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: "Waiting for page text" })).toBeDisabled();
     expect(
       screen.getByText(
-        "Echo is reading your pages first. Listen now will unlock when the text is ready.",
+        "Echo is reading your pages first. Audio creation will unlock when the text is ready.",
       ),
     ).toBeVisible();
   });
@@ -250,7 +251,7 @@ describe("document text preparation", () => {
     );
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
-    expect(await screen.findByText("Page text ready")).toBeVisible();
+    expect(await screen.findByText(/Page text ready/)).toBeVisible();
     expect(fetchMock.mock.calls[1][0]).toContain("/pages/1/retry-text");
   });
 
@@ -295,7 +296,7 @@ describe("document text preparation", () => {
 
     expect(
       await screen.findByText(
-        "All page text is prepared. Select Listen now to create listening audio.",
+        "All page text is prepared. Select Create listening audio to continue.",
       ),
     ).toBeVisible();
     expect(fetchMock.mock.calls[1][0]).toContain("/pages/1/text");
@@ -313,7 +314,7 @@ describe("document text preparation", () => {
     render(<DocumentProcessing documentId="document-id" />);
 
     expect(
-      await screen.findByRole("button", { name: "Listen now" }),
+      await screen.findByRole("button", { name: "Waiting for page text" }),
     ).toBeDisabled();
     expect(screen.getByRole("button", { name: "Resume reading pages" })).toBeVisible();
     expect(
@@ -375,7 +376,7 @@ describe("document text preparation", () => {
     render(<DocumentProcessing documentId="document-id" />);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-    expect(screen.getByText("Creating the audio")).toBeVisible();
+    expect(screen.getByText(/Creating the audio/)).toBeVisible();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

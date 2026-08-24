@@ -796,7 +796,7 @@ function UploadResultCard({
         href={`/books/${result.book_id}`}
         className="mt-5 inline-flex min-h-12 items-center rounded-xl bg-accent px-6 py-3 font-semibold text-white shadow-sm transition hover:bg-accent-dark"
       >
-        Review upload
+        Continue to page text
       </Link>
     </section>
   );

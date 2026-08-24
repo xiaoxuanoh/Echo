@@ -14,6 +14,27 @@ describe("page photo workflow", () => {
       configurable: true,
       value: vi.fn(),
     });
+    vi.stubGlobal(
+      "Image",
+      class {
+        naturalWidth = 1000;
+        naturalHeight = 1400;
+        onload: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+
+        set src(_: string) {
+          queueMicrotask(() => this.onload?.());
+        }
+      },
+    );
+    Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
+      configurable: true,
+      value: vi.fn(() => ({ drawImage: vi.fn() })),
+    });
+    Object.defineProperty(HTMLCanvasElement.prototype, "toBlob", {
+      configurable: true,
+      value: vi.fn((callback: BlobCallback) => callback(new Blob(["compressed"]))),
+    });
   });
 
   afterEach(() => {
@@ -100,7 +121,7 @@ describe("page photo workflow", () => {
       "http://localhost:8001/api/books/temporary-document-id/pages/1/image?v=0",
     );
     expect(
-      screen.getByRole("link", { name: "Review upload" }),
+      screen.getByRole("link", { name: "Continue to page text" }),
     ).toHaveAttribute("href", "/books/temporary-document-id");
   });
 
