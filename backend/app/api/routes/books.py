@@ -787,6 +787,7 @@ def _audio_result(
     page_numbers_by_id = {page.id: page.page_number for page in book.pages}
     return DocumentAudioResult(
         book_id=book.id,
+        library_book_id=book.library_document_id,
         title=book.title,
         recording_title=book.recording_title,
         original_filename=book.original_filename,

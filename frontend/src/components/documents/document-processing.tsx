@@ -321,7 +321,7 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
       : `${document.completed_pages} of ${document.total_pages} pages ready`;
 
   return (
-    <div className="mt-8">
+    <div className="mt-3">
       <section className="rounded-2xl border border-border bg-surface p-5 shadow-[0_14px_40px_rgba(48,55,61,0.05)] sm:p-6">
         <div className="mt-2 flex flex-wrap items-start justify-between gap-4">
           <div>

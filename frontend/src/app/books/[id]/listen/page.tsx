@@ -11,7 +11,7 @@ export default async function ListenPage({
   const { id } = await params;
 
   return (
-    <main className="flex-1 px-5 py-8 sm:px-8 sm:py-12">
+    <main className="flex-1 px-5 py-4 sm:px-8 sm:py-6">
       <div className="mx-auto max-w-5xl">
         <div className="flex flex-wrap gap-4">
           <Link

@@ -340,6 +340,7 @@ def test_renames_one_recording(
     assert recording["recording_title"] == "Chapter one"
     audio = client.get(f"/api/books/{upload['book_id']}/audio").json()
     assert audio["title"] == "chapter"
+    assert audio["library_book_id"] == upload["book_id"]
     assert audio["recording_title"] == "Chapter one"
     assert audio["original_filename"] == "chapter.pdf"
 

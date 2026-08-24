@@ -186,6 +186,7 @@ export type AudioSegment = {
 
 export type DocumentAudio = {
   book_id: string;
+  library_book_id: string;
   title: string;
   recording_title: string | null;
   original_filename: string | null;

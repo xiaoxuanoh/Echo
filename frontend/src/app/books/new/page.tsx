@@ -11,7 +11,7 @@ export default async function NewDocumentPage({
   const isAddingRecording = Boolean(folderId);
 
   return (
-    <main className="flex-1 px-5 py-8 sm:px-8 sm:py-12">
+    <main className="flex-1 px-5 py-4 sm:px-8 sm:py-6">
       <div className="mx-auto max-w-5xl">
         <Link
           href={isAddingRecording ? "/books" : "/"}
@@ -19,7 +19,7 @@ export default async function NewDocumentPage({
         >
           {isAddingRecording ? "← Back to library" : "← Echo home"}
         </Link>
-        <header className="mt-8 rounded-2xl border border-border bg-surface p-5 shadow-[0_14px_40px_rgba(48,55,61,0.05)] sm:p-6">
+        <header className="mt-3 rounded-2xl border border-border bg-surface p-5 shadow-[0_14px_40px_rgba(48,55,61,0.05)] sm:p-6">
           <p className="text-sm font-bold tracking-[0.16em] text-accent uppercase">
             {isAddingRecording ? "New recording" : "New upload"}
           </p>

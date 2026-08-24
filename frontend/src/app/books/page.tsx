@@ -3,7 +3,7 @@ import { LibraryAuthGate } from "@/components/auth/library-auth-gate";
 
 export default function DocumentsPage() {
   return (
-    <main className="flex-1 px-5 py-8 sm:px-8 sm:py-12">
+    <main className="flex-1 px-5 py-4 sm:px-8 sm:py-6">
       <div className="mx-auto max-w-5xl">
         <div className="flex flex-wrap items-start justify-between gap-5">
           <div>

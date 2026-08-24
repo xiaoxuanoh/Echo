@@ -229,6 +229,7 @@ class AudioSegmentResult(BaseModel):
 
 class DocumentAudioResult(BaseModel):
     book_id: UUID
+    library_book_id: UUID
     title: str
     recording_title: str | None
     original_filename: str | None

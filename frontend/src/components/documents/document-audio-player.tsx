@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -50,6 +51,14 @@ function completedSegments(segments: AudioSegment[]): AudioSegment[] {
 
 function listeningTitle(documentAudio: DocumentAudio): string {
   return documentAudio.recording_title ?? documentAudio.original_filename ?? documentAudio.title;
+}
+
+function uploadMoreHref(documentAudio: DocumentAudio): string {
+  const params = new URLSearchParams({
+    folderId: documentAudio.library_book_id,
+    folderTitle: documentAudio.title,
+  });
+  return `/books/new?${params.toString()}`;
 }
 
 export function DocumentAudioPlayer({ documentId }: { documentId: string }) {
@@ -225,7 +234,7 @@ export function DocumentAudioPlayer({ documentId }: { documentId: string }) {
   const showUploadContext = title !== documentAudio.title;
 
   return (
-    <div className="mt-8">
+    <div className="mt-3">
       <section className="rounded-2xl border border-border bg-surface p-5 shadow-[0_14px_40px_rgba(48,55,61,0.05)] sm:p-6">
         <p className="text-sm font-bold tracking-[0.12em] text-accent uppercase">
           Listening to
@@ -244,7 +253,7 @@ export function DocumentAudioPlayer({ documentId }: { documentId: string }) {
                 : "No listening audio yet"}
             </p>
           </div>
-          <div className="flex flex-col items-stretch gap-2 sm:items-end">
+          <div className="flex flex-col items-stretch gap-3 sm:min-w-60 sm:items-stretch">
             {canStart && (
               <button
                 type="button"
@@ -259,25 +268,35 @@ export function DocumentAudioPlayer({ documentId }: { documentId: string }) {
                     : "Continue creating audio"}
               </button>
             )}
-            <button
-              type="button"
-              onClick={() => {
-                setRecordingName(title);
-                setRenamingRecording(true);
-              }}
-              className="min-h-11 rounded-lg border border-border bg-white px-4 font-semibold hover:bg-[#f8f6f0]"
+            <Link
+              href={uploadMoreHref(documentAudio)}
+              className="inline-flex min-h-12 items-center justify-center rounded-xl bg-accent px-6 py-3 font-semibold text-white shadow-sm hover:bg-accent-dark"
             >
-              Rename recording
-            </button>
-            {segments.length > 0 && (
-              <a
-                href={recordingAudioDownloadUrl(documentAudio.book_id, accessToken)}
-                download
-                className="inline-flex min-h-11 items-center justify-center rounded-lg border border-border bg-white px-4 font-semibold hover:bg-[#f8f6f0]"
+              Upload more
+            </Link>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <button
+                type="button"
+                aria-label="Rename recording"
+                onClick={() => {
+                  setRecordingName(title);
+                  setRenamingRecording(true);
+                }}
+                className="min-h-11 flex-1 rounded-lg border border-border bg-white px-4 font-semibold hover:bg-[#f8f6f0]"
               >
-                Download recording
-              </a>
-            )}
+                Rename
+              </button>
+              {segments.length > 0 && (
+                <a
+                  href={recordingAudioDownloadUrl(documentAudio.book_id, accessToken)}
+                  download
+                  aria-label="Download recording"
+                  className="inline-flex min-h-11 flex-1 items-center justify-center rounded-lg border border-border bg-white px-4 font-semibold hover:bg-[#f8f6f0]"
+                >
+                  Download
+                </a>
+              )}
+            </div>
           </div>
         </div>
 

@@ -6,6 +6,7 @@ import { DocumentAudioPlayer } from "@/components/documents/document-audio-playe
 
 const textReadyAudio = {
   book_id: "document-id",
+  library_book_id: "folder-id",
   title: "My document",
   recording_title: null,
   original_filename: "my-document.pdf",
@@ -164,6 +165,17 @@ describe("document audio player", () => {
     ).toHaveAttribute(
       "href",
       "http://localhost:8001/api/books/document-id/audio/download",
+    );
+  });
+
+  it("links to uploading more pages for the saved upload", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(readyAudio));
+
+    render(<DocumentAudioPlayer documentId="document-id" />);
+
+    expect(await screen.findByRole("link", { name: "Upload more" })).toHaveAttribute(
+      "href",
+      "/books/new?folderId=folder-id&folderTitle=My+document",
     );
   });
 
