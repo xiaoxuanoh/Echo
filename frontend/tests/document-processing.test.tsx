@@ -258,6 +258,50 @@ describe("document text preparation", () => {
     });
   });
 
+  it("restores a cropped review page to the original page image", async () => {
+    const fetchMock = vi.mocked(fetch);
+    const croppedDocument = {
+      ...uploadedDocument,
+      pages: [
+        {
+          ...uploadedDocument.pages[0],
+          crop_left: 0.2,
+          crop_top: 0.1,
+          crop_right: 0.8,
+          crop_bottom: 0.9,
+        },
+      ],
+    };
+
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(croppedDocument))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          book_id: "document-id",
+          page_id: "page-id",
+          page_number: 1,
+          crop_left: 0,
+          crop_top: 0,
+          crop_right: 1,
+          crop_bottom: 1,
+          processed_image_path: "pages/page-0001.png",
+        }),
+      );
+
+    render(<DocumentProcessing documentId="document-id" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Crop" }));
+    fireEvent.click(screen.getByRole("button", { name: "Restore original" }));
+
+    await waitFor(() => expect(fetchMock.mock.calls[1][0]).toContain("/pages/1/crop"));
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({
+      crop_left: 0,
+      crop_top: 0,
+      crop_right: 1,
+      crop_bottom: 1,
+    });
+  });
+
   it("restarts the review by removing the upload and returning to upload", async () => {
     const confirmMock = vi.spyOn(window, "confirm").mockReturnValue(true);
     const fetchMock = vi.mocked(fetch);

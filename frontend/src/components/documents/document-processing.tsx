@@ -314,13 +314,21 @@ function PreparedPageReviewCard({
       return;
     }
 
+    await saveCropArea(composeCrop(baseCrop, crop));
+  }
+
+  async function restoreOriginalCrop() {
+    await saveCropArea(fullCrop());
+  }
+
+  async function saveCropArea(nextCrop: PageCrop) {
     setSaving(true);
     setError(null);
     try {
       const saved = await updatePreparedPageCrop(
         documentId,
         page.page_number,
-        composeCrop(baseCrop, crop),
+        nextCrop,
       );
       setBaseCrop({
         crop_left: saved.crop_left,
@@ -482,6 +490,14 @@ function PreparedPageReviewCard({
                 className="rounded-lg bg-accent px-4 py-2 font-semibold text-white hover:bg-accent-dark disabled:opacity-60"
               >
                 {saving ? "Saving..." : "Save crop"}
+              </button>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => void restoreOriginalCrop()}
+                className="rounded-lg border border-border px-4 py-2 font-semibold hover:bg-[#f4f1e9] disabled:opacity-60"
+              >
+                Restore original
               </button>
               <button
                 type="button"
