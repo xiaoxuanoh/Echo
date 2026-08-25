@@ -177,6 +177,82 @@ def test_updates_prepared_page_crop_for_image_upload(
     assert metadata["pages"][0]["original_image_path"].startswith("originals/")
 
 
+def test_rotates_prepared_page_before_text_processing(
+    client: TestClient,
+    storage_path: Path,
+) -> None:
+    response = client.post(
+        "/api/books/images",
+        files=[("files", ("page.png", image_bytes((80, 120)), "image/png"))],
+        data={"rotations": "[0]"},
+    )
+    assert response.status_code == 200
+    uploaded = response.json()
+
+    rotate_response = client.put(
+        f"/api/books/{uploaded['book_id']}/pages/1/rotation",
+        json={"direction": "right"},
+    )
+
+    assert rotate_response.status_code == 200
+    assert rotate_response.json()["pages"][0]["rotation_degrees"] == 90
+    prepared_path = storage_path / uploaded["book_id"] / "pages" / "page-0001.png"
+    with Image.open(prepared_path) as prepared:
+        assert prepared.size == (120, 80)
+
+    metadata = json.loads(
+        (storage_path / uploaded["book_id"] / "book.json").read_text()
+    )
+    assert metadata["pages"][0]["rotation_degrees"] == 90
+
+
+def test_reorders_and_removes_prepared_pages_before_text_processing(
+    client: TestClient,
+    storage_path: Path,
+) -> None:
+    response = client.post(
+        "/api/books/images",
+        files=[
+            ("files", ("first.png", image_bytes((80, 120)), "image/png")),
+            ("files", ("second.png", image_bytes((80, 120)), "image/png")),
+            ("files", ("third.png", image_bytes((80, 120)), "image/png")),
+        ],
+        data={"rotations": "[0, 0, 0]"},
+    )
+    assert response.status_code == 200
+    uploaded = response.json()
+    page_ids = [page["page_id"] for page in uploaded["pages"]]
+
+    reorder_response = client.patch(
+        f"/api/books/{uploaded['book_id']}/pages/order",
+        json={"page_ids": [page_ids[1], page_ids[0], page_ids[2]]},
+    )
+
+    assert reorder_response.status_code == 200
+    reordered_pages = reorder_response.json()["pages"]
+    assert [page["id"] for page in reordered_pages] == [
+        page_ids[1],
+        page_ids[0],
+        page_ids[2],
+    ]
+    assert [page["page_number"] for page in reordered_pages] == [1, 2, 3]
+
+    remove_response = client.delete(f"/api/books/{uploaded['book_id']}/pages/2")
+
+    assert remove_response.status_code == 200
+    remaining_pages = remove_response.json()["pages"]
+    assert [page["id"] for page in remaining_pages] == [page_ids[1], page_ids[2]]
+    assert [page["page_number"] for page in remaining_pages] == [1, 2]
+    assert remove_response.json()["total_pages"] == 2
+
+    metadata = json.loads(
+        (storage_path / uploaded["book_id"] / "book.json").read_text()
+    )
+    assert [page["id"] for page in metadata["pages"]] == [page_ids[1], page_ids[2]]
+    assert [page["page_number"] for page in metadata["pages"]] == [1, 2]
+    assert metadata["total_pages"] == 2
+
+
 def test_rejects_prepared_page_crop_after_text_processing_starts(
     client: TestClient,
 ) -> None:

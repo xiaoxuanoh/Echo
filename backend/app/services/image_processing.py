@@ -210,9 +210,16 @@ class ImageProcessingService:
         image: Image.Image,
         destination: Path,
         crop_rectangle: CropRectangle | None = None,
+        rotation_degrees: int = 0,
     ) -> None:
         """Save a PDF-rendered page in the same stable format as page photos."""
 
+        if rotation_degrees not in self.allowed_rotations:
+            raise EchoError(
+                "invalid_rotation",
+                "Page rotation must be 0, 90, 180, or 270 degrees.",
+                status_code=422,
+            )
         if image.width * image.height > self.max_pixels:
             raise EchoError(
                 "image_too_large",
@@ -224,6 +231,8 @@ class ImageProcessingService:
             normalized = image
             if normalized.mode not in {"RGB", "L"}:
                 normalized = normalized.convert("RGB")
+            if rotation_degrees:
+                normalized = normalized.rotate(-rotation_degrees, expand=True)
             if crop_rectangle is not None:
                 normalized = self._crop_rectangle(normalized, crop_rectangle)
             normalized.save(destination, format="PNG", optimize=True)

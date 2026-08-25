@@ -91,6 +91,7 @@ export type DocumentPageDetail = {
   crop_top: number | null;
   crop_right: number | null;
   crop_bottom: number | null;
+  rotation_degrees: Rotation;
   processing_status: PageProcessingStatus;
   error_message: string | null;
   warning_messages: string[];

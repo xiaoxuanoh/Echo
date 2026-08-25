@@ -33,6 +33,11 @@ const uploadedDocument = {
       extraction_method: "ocr",
       extracted_text: "",
       extracted_character_count: 0,
+      crop_left: null,
+      crop_top: null,
+      crop_right: null,
+      crop_bottom: null,
+      rotation_degrees: 0,
       processing_status: "pending",
       error_message: null,
       warning_messages: [],
@@ -118,11 +123,16 @@ describe("document text preparation", () => {
 
     render(<DocumentProcessing documentId="document-id" />);
 
-    expect(await screen.findByText("Preview pages before OCR")).toBeVisible();
+    expect(await screen.findByText("Review pages before text reading")).toBeVisible();
     expect(screen.getByAltText("Prepared preview of page 1")).toHaveAttribute(
       "src",
-      "http://localhost:8001/api/books/document-id/pages/1/image",
+      "http://localhost:8001/api/books/document-id/pages/1/image?v=0",
     );
+    expect(screen.getByRole("button", { name: "Rotate left" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Rotate right" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Crop" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Drag page 1 to reorder" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Remove page" })).toBeDisabled();
     expect(fetchMock).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole("button", { name: "Start reading page text" }));
 
@@ -145,6 +155,62 @@ describe("document text preparation", () => {
     expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: "POST" });
     expect(fetchMock.mock.calls[3][0]).toContain("/prepare-audio");
     expect(fetchMock.mock.calls[3][1]).toMatchObject({ method: "POST" });
+  });
+
+  it("edits prepared OCR pages before text preparation starts", async () => {
+    const fetchMock = vi.mocked(fetch);
+    const twoPageDocument = {
+      ...uploadedDocument,
+      total_pages: 2,
+      pages: [
+        uploadedDocument.pages[0],
+        {
+          ...uploadedDocument.pages[0],
+          id: "page-id-2",
+          page_number: 2,
+          original_filename: "page-2.png",
+        },
+      ],
+    };
+    const rotatedDocument = {
+      ...twoPageDocument,
+      pages: [
+        { ...twoPageDocument.pages[0], rotation_degrees: 90 },
+        twoPageDocument.pages[1],
+      ],
+    };
+    const removedDocument = {
+      ...twoPageDocument,
+      total_pages: 1,
+      pages: [twoPageDocument.pages[1]],
+    };
+
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(twoPageDocument))
+      .mockResolvedValueOnce(jsonResponse(rotatedDocument))
+      .mockResolvedValueOnce(jsonResponse(removedDocument));
+    const confirmMock = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    render(<DocumentProcessing documentId="document-id" />);
+
+    expect(await screen.findByText("Review pages before text reading")).toBeVisible();
+    fireEvent.click(screen.getAllByRole("button", { name: "Rotate right" })[0]);
+    expect(screen.getByRole("button", { name: "Drag page 1 to reorder" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Move later" })).not.toBeInTheDocument();
+
+    await waitFor(() =>
+      expect(fetchMock.mock.calls[1][0]).toContain("/pages/1/rotation"),
+    );
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: "PUT" });
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({
+      direction: "right",
+    });
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Remove page" })[0]);
+
+    await waitFor(() => expect(fetchMock.mock.calls[2][0]).toContain("/pages/1"));
+    expect(fetchMock.mock.calls[2][1]).toMatchObject({ method: "DELETE" });
+    expect(confirmMock).toHaveBeenCalledWith("Remove page 1 from this upload?");
   });
 
   it("restarts the review by removing the upload and returning to upload", async () => {

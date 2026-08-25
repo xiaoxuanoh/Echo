@@ -44,6 +44,8 @@ from app.schemas.documents import (
     OcrLineResult,
     PageCropRequest,
     PageCropResult,
+    PageReorderRequest,
+    PageRotateRequest,
     PageTextUpdateRequest,
     PageTextPreviewResult,
     PdfPageResult,
@@ -444,6 +446,7 @@ def _book_result(
                 crop_top=page.crop_top,
                 crop_right=page.crop_right,
                 crop_bottom=page.crop_bottom,
+                rotation_degrees=page.rotation_degrees,
                 processing_status=page.processing_status,
                 error_message=page.error_message,
                 warning_messages=page.warning_messages,
@@ -988,26 +991,15 @@ def get_prepared_page_image(
     return Response(content=image_content, media_type="image/png")
 
 
-@router.put(
-    "/{book_id}/pages/{page_number}/crop",
-    response_model=PageCropResult,
-)
-def update_prepared_page_crop(
-    request: Request,
-    crop: PageCropRequest,
-    book_id: UUID,
-    page_number: int = ApiPath(ge=1),
-) -> PageCropResult:
-    settings = request.app.state.settings
-    user_id = _request_user_id(request)
-    book_directory = settings.local_storage_path / str(book_id)
-    metadata = _metadata_service(settings)
-    book = _load_document_for_user(
-        settings.local_storage_path,
-        book_id,
-        user_id,
-        metadata,
-    )
+def _editable_prepared_page(
+    book: DocumentRecord,
+    page_number: int,
+    *,
+    unavailable_code: str = "page_edit_unavailable",
+    unavailable_message: str = "Only pages prepared for OCR can be edited.",
+    not_editable_code: str = "page_edit_not_available",
+    not_editable_message: str = "Edit the page before Echo starts reading its text.",
+) -> DocumentPageRecord:
     page = next(
         (candidate for candidate in book.pages if candidate.page_number == page_number),
         None,
@@ -1020,23 +1012,47 @@ def update_prepared_page_crop(
         )
     if page.extraction_method != "ocr" or page.processed_image_path is None:
         raise EchoError(
-            "page_crop_unavailable",
-            "Only pages prepared for OCR can be cropped.",
+            unavailable_code,
+            unavailable_message,
             status_code=409,
         )
     if book.status != "uploaded" or page.processing_status != "pending":
         raise EchoError(
-            "page_crop_not_editable",
-            "Crop the page before Echo starts reading its text.",
+            not_editable_code,
+            not_editable_message,
             status_code=409,
         )
+    return page
 
-    crop_rectangle = (
-        crop.crop_left,
-        crop.crop_top,
-        crop.crop_right,
-        crop.crop_bottom,
+
+def _current_crop_rectangle(
+    page: DocumentPageRecord,
+) -> tuple[float, float, float, float] | None:
+    crop_values = [
+        page.crop_left,
+        page.crop_top,
+        page.crop_right,
+        page.crop_bottom,
+    ]
+    if any(value is None for value in crop_values):
+        return None
+    return (
+        page.crop_left,
+        page.crop_top,
+        page.crop_right,
+        page.crop_bottom,
     )
+
+
+def _regenerate_prepared_page_image(
+    *,
+    settings: object,
+    book: DocumentRecord,
+    book_directory: Path,
+    page: DocumentPageRecord,
+    user_id: UUID | None,
+    crop_rectangle: tuple[float, float, float, float] | None,
+) -> Path:
     destination = _page_image_path(book_directory, page.processed_image_path)
     image_service = ImageProcessingService(settings.max_image_pixels)
 
@@ -1063,33 +1079,81 @@ def update_prepared_page_crop(
             page.rotation_degrees,
             crop_rectangle,
         )
-    else:
-        source_pdf = _document_relative_path(
-            book_directory,
-            book.source_storage_path,
-            unavailable_code="source_document_unavailable",
-            unavailable_message="Echo could not find the original PDF.",
-            invalid_code="source_document_invalid",
-            invalid_message="The original PDF path is invalid.",
+        return destination
+
+    source_pdf = _document_relative_path(
+        book_directory,
+        book.source_storage_path,
+        unavailable_code="source_document_unavailable",
+        unavailable_message="Echo could not find the original PDF.",
+        invalid_code="source_document_invalid",
+        invalid_message="The original PDF path is invalid.",
+    )
+    _download_document_file(
+        settings,
+        book,
+        user_id=user_id,
+        bucket=settings.supabase_storage_bucket_books,
+        relative_path=book.source_storage_path,
+        destination=source_pdf,
+    )
+    pdf_service = PdfProcessingService(settings.pdf_text_min_characters)
+    rendered_page = pdf_service.render_page(source_pdf, page.page_number - 1)
+    try:
+        image_service.save_rendered_page(
+            rendered_page,
+            destination,
+            crop_rectangle,
+            page.rotation_degrees,
         )
-        _download_document_file(
-            settings,
-            book,
-            user_id=user_id,
-            bucket=settings.supabase_storage_bucket_books,
-            relative_path=book.source_storage_path,
-            destination=source_pdf,
-        )
-        pdf_service = PdfProcessingService(settings.pdf_text_min_characters)
-        rendered_page = pdf_service.render_page(source_pdf, page.page_number - 1)
-        try:
-            image_service.save_rendered_page(
-                rendered_page,
-                destination,
-                crop_rectangle,
-            )
-        finally:
-            rendered_page.close()
+    finally:
+        rendered_page.close()
+    return destination
+
+
+@router.put(
+    "/{book_id}/pages/{page_number}/crop",
+    response_model=PageCropResult,
+)
+def update_prepared_page_crop(
+    request: Request,
+    crop: PageCropRequest,
+    book_id: UUID,
+    page_number: int = ApiPath(ge=1),
+) -> PageCropResult:
+    settings = request.app.state.settings
+    user_id = _request_user_id(request)
+    book_directory = settings.local_storage_path / str(book_id)
+    metadata = _metadata_service(settings)
+    book = _load_document_for_user(
+        settings.local_storage_path,
+        book_id,
+        user_id,
+        metadata,
+    )
+    page = _editable_prepared_page(
+        book,
+        page_number,
+        unavailable_code="page_crop_unavailable",
+        unavailable_message="Only pages prepared for OCR can be cropped.",
+        not_editable_code="page_crop_not_editable",
+        not_editable_message="Crop the page before Echo starts reading its text.",
+    )
+
+    crop_rectangle = (
+        crop.crop_left,
+        crop.crop_top,
+        crop.crop_right,
+        crop.crop_bottom,
+    )
+    destination = _regenerate_prepared_page_image(
+        settings=settings,
+        book=book,
+        book_directory=book_directory,
+        page=page,
+        user_id=user_id,
+        crop_rectangle=crop_rectangle,
+    )
 
     now = datetime.now(UTC)
     page.crop_left = crop.crop_left
@@ -1122,6 +1186,149 @@ def update_prepared_page_crop(
         crop_bottom=page.crop_bottom,
         processed_image_path=page.processed_image_path,
     )
+
+
+@router.put(
+    "/{book_id}/pages/{page_number}/rotation",
+    response_model=DocumentDetailResult,
+)
+def rotate_prepared_page(
+    request: Request,
+    rotation: PageRotateRequest,
+    book_id: UUID,
+    page_number: int = ApiPath(ge=1),
+) -> DocumentDetailResult:
+    settings = request.app.state.settings
+    user_id = _request_user_id(request)
+    book_directory = settings.local_storage_path / str(book_id)
+    metadata = _metadata_service(settings)
+    book = _load_document_for_user(
+        settings.local_storage_path,
+        book_id,
+        user_id,
+        metadata,
+    )
+    page = _editable_prepared_page(book, page_number)
+    amount = 90 if rotation.direction == "right" else 270
+    page.rotation_degrees = (page.rotation_degrees + amount) % 360
+    destination = _regenerate_prepared_page_image(
+        settings=settings,
+        book=book,
+        book_directory=book_directory,
+        page=page,
+        user_id=user_id,
+        crop_rectangle=_current_crop_rectangle(page),
+    )
+    now = datetime.now(UTC)
+    page.extracted_text = ""
+    page.error_message = None
+    page.processing_status = "pending"
+    page.updated_at = now
+    book.updated_at = now
+    _store_document_file(
+        settings,
+        book,
+        user_id=user_id,
+        bucket=settings.supabase_storage_bucket_pages,
+        relative_path=page.processed_image_path,
+        source=destination,
+        content_type="image/png",
+    )
+    metadata.save(book_directory, book)
+    return _book_result(book)
+
+
+def _assert_all_pages_editable(book: DocumentRecord) -> None:
+    if book.status != "uploaded":
+        raise EchoError(
+            "pages_not_editable",
+            "Edit pages before Echo starts reading their text.",
+            status_code=409,
+        )
+    if any(
+        page.extraction_method != "ocr"
+        or page.processed_image_path is None
+        or page.processing_status != "pending"
+        for page in book.pages
+    ):
+        raise EchoError(
+            "pages_not_editable",
+            "Only pending OCR review pages can be rearranged or removed.",
+            status_code=409,
+        )
+
+
+@router.patch("/{book_id}/pages/order", response_model=DocumentDetailResult)
+def reorder_prepared_pages(
+    request: Request,
+    order: PageReorderRequest,
+    book_id: UUID,
+) -> DocumentDetailResult:
+    settings = request.app.state.settings
+    user_id = _request_user_id(request)
+    book_directory = settings.local_storage_path / str(book_id)
+    metadata = _metadata_service(settings)
+    book = _load_document_for_user(
+        settings.local_storage_path,
+        book_id,
+        user_id,
+        metadata,
+    )
+    _assert_all_pages_editable(book)
+    pages_by_id = {page.id: page for page in book.pages}
+    if set(order.page_ids) != set(pages_by_id):
+        raise EchoError(
+            "invalid_page_order",
+            "Include each prepared page once when rearranging pages.",
+            status_code=422,
+        )
+
+    now = datetime.now(UTC)
+    for page_number, page_id in enumerate(order.page_ids, start=1):
+        page = pages_by_id[page_id]
+        page.page_number = page_number
+        page.updated_at = now
+    book.pages = [pages_by_id[page_id] for page_id in order.page_ids]
+    book.updated_at = now
+    metadata.save(book_directory, book)
+    return _book_result(book)
+
+
+@router.delete("/{book_id}/pages/{page_number}", response_model=DocumentDetailResult)
+def remove_prepared_page(
+    request: Request,
+    book_id: UUID,
+    page_number: int = ApiPath(ge=1),
+) -> DocumentDetailResult:
+    settings = request.app.state.settings
+    user_id = _request_user_id(request)
+    book_directory = settings.local_storage_path / str(book_id)
+    metadata = _metadata_service(settings)
+    book = _load_document_for_user(
+        settings.local_storage_path,
+        book_id,
+        user_id,
+        metadata,
+    )
+    _assert_all_pages_editable(book)
+    page = _editable_prepared_page(book, page_number)
+    if len(book.pages) <= 1:
+        raise EchoError(
+            "last_page_required",
+            "Keep at least one page in the upload.",
+            status_code=422,
+        )
+
+    now = datetime.now(UTC)
+    remaining_pages = [candidate for candidate in book.pages if candidate.id != page.id]
+    for next_number, remaining_page in enumerate(remaining_pages, start=1):
+        remaining_page.page_number = next_number
+        remaining_page.updated_at = now
+    book.pages = remaining_pages
+    book.total_pages = len(remaining_pages)
+    book.updated_at = now
+    metadata.save(book_directory, book)
+    return _book_result(book)
 
 
 def _safe_extension(filename: str | None) -> str:

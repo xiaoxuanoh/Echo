@@ -1,5 +1,22 @@
 "use client";
 
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  type DragEndEvent,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  rectSortingStrategy,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
@@ -12,13 +29,20 @@ import {
   getDocumentAudio,
   prepareDocumentAudio,
   preparedPageImageUrl,
+  removePreparedPage,
+  reorderPreparedPages,
   retryPageText,
+  rotatePreparedPage,
   startTextProcessing,
   updatePageText,
+  updatePreparedPageCrop,
 } from "@/lib/api";
 import type {
   DocumentDetail,
+  DocumentPageDetail,
   DocumentProcessingStatus,
+  PageCrop,
+  PageCropResult,
   PageProcessingStatus,
 } from "@/types/documents";
 
@@ -72,6 +96,431 @@ function documentStepLabel(
   return "Step 2 of 3: Prepare page text";
 }
 
+function cropFromPage(page: DocumentPageDetail): PageCrop {
+  return {
+    crop_left: page.crop_left ?? 0,
+    crop_top: page.crop_top ?? 0,
+    crop_right: page.crop_right ?? 1,
+    crop_bottom: page.crop_bottom ?? 1,
+  };
+}
+
+function fullCrop(): PageCrop {
+  return { crop_left: 0, crop_top: 0, crop_right: 1, crop_bottom: 1 };
+}
+
+function composeCrop(baseCrop: PageCrop, localCrop: PageCrop): PageCrop {
+  const baseWidth = baseCrop.crop_right - baseCrop.crop_left;
+  const baseHeight = baseCrop.crop_bottom - baseCrop.crop_top;
+  return {
+    crop_left: cropFixed(baseCrop.crop_left + localCrop.crop_left * baseWidth),
+    crop_top: cropFixed(baseCrop.crop_top + localCrop.crop_top * baseHeight),
+    crop_right: cropFixed(baseCrop.crop_left + localCrop.crop_right * baseWidth),
+    crop_bottom: cropFixed(baseCrop.crop_top + localCrop.crop_bottom * baseHeight),
+  };
+}
+
+function clampCropValue(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(1, Math.max(0, value));
+}
+
+function cropPercent(value: number): number {
+  return Math.round(value * 100);
+}
+
+function cropFixed(value: number): number {
+  return Number(value.toFixed(4));
+}
+
+function versionedImageUrl(url: string, version: number): string {
+  return `${url}${url.includes("?") ? "&" : "?"}v=${version}`;
+}
+
+function PreparedPageReviewCard({
+  documentId,
+  page,
+  pageCount,
+  imageVersion,
+  acting,
+  accessToken,
+  onRotate,
+  onRemove,
+  onPageCropped,
+}: {
+  documentId: string;
+  page: DocumentPageDetail;
+  pageCount: number;
+  imageVersion: number;
+  acting: boolean;
+  accessToken: string | null;
+  onRotate: (pageNumber: number, direction: "left" | "right") => void;
+  onRemove: (pageNumber: number) => void;
+  onPageCropped: (result: PageCropResult) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: page.id });
+  const frameRef = useRef<HTMLDivElement>(null);
+  const [editing, setEditing] = useState(false);
+  const [baseCrop, setBaseCrop] = useState<PageCrop>(() => cropFromPage(page));
+  const [crop, setCrop] = useState<PageCrop>(() => fullCrop());
+  const [imageSize, setImageSize] = useState<{ width: number; height: number } | null>(
+    null,
+  );
+  const [displayRect, setDisplayRect] = useState<{
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const preparedImageSrc = preparedPageImageUrl(
+    documentId,
+    page.page_number,
+    accessToken,
+  );
+  const imageSrc = versionedImageUrl(preparedImageSrc, imageVersion);
+  const cropWidth = crop.crop_right - crop.crop_left;
+  const cropHeight = crop.crop_bottom - crop.crop_top;
+  const cropIsValid = cropWidth > 0.02 && cropHeight > 0.02;
+
+  const refreshDisplayRect = useCallback(() => {
+    const frame = frameRef.current;
+    if (!frame || !imageSize) {
+      setDisplayRect(null);
+      return;
+    }
+    const frameWidth = frame.clientWidth;
+    const frameHeight = frame.clientHeight;
+    if (frameWidth <= 0 || frameHeight <= 0) {
+      setDisplayRect(null);
+      return;
+    }
+    const imageRatio = imageSize.width / imageSize.height;
+    const frameRatio = frameWidth / frameHeight;
+    const renderedWidth = frameRatio > imageRatio ? frameHeight * imageRatio : frameWidth;
+    const renderedHeight =
+      frameRatio > imageRatio ? frameHeight : frameWidth / imageRatio;
+    setDisplayRect({
+      left: (frameWidth - renderedWidth) / 2,
+      top: (frameHeight - renderedHeight) / 2,
+      width: renderedWidth,
+      height: renderedHeight,
+    });
+  }, [imageSize]);
+
+  useEffect(() => {
+    refreshDisplayRect();
+  }, [refreshDisplayRect]);
+
+  useEffect(() => {
+    window.addEventListener("resize", refreshDisplayRect);
+    return () => window.removeEventListener("resize", refreshDisplayRect);
+  }, [refreshDisplayRect]);
+
+  function normalizedPointerPosition(event: React.PointerEvent<HTMLElement>) {
+    const frame = frameRef.current;
+    const rect = displayRect;
+    if (!frame || !rect) return null;
+    const frameBounds = frame.getBoundingClientRect();
+    return {
+      x: clampCropValue((event.clientX - frameBounds.left - rect.left) / rect.width),
+      y: clampCropValue((event.clientY - frameBounds.top - rect.top) / rect.height),
+    };
+  }
+
+  function moveCrop(event: React.PointerEvent<HTMLElement>) {
+    const start = normalizedPointerPosition(event);
+    if (!start) return;
+    const dragStart = start;
+    const startCrop = crop;
+    event.currentTarget.setPointerCapture(event.pointerId);
+
+    function onPointerMove(moveEvent: PointerEvent) {
+      const frame = frameRef.current;
+      const rect = displayRect;
+      if (!frame || !rect) return;
+      const frameBounds = frame.getBoundingClientRect();
+      const nextX = clampCropValue(
+        (moveEvent.clientX - frameBounds.left - rect.left) / rect.width,
+      );
+      const nextY = clampCropValue(
+        (moveEvent.clientY - frameBounds.top - rect.top) / rect.height,
+      );
+      const width = startCrop.crop_right - startCrop.crop_left;
+      const height = startCrop.crop_bottom - startCrop.crop_top;
+      const left = clampCropValue(startCrop.crop_left + nextX - dragStart.x);
+      const top = clampCropValue(startCrop.crop_top + nextY - dragStart.y);
+      setError(null);
+      setCrop({
+        crop_left: cropFixed(Math.min(left, 1 - width)),
+        crop_top: cropFixed(Math.min(top, 1 - height)),
+        crop_right: cropFixed(Math.min(left, 1 - width) + width),
+        crop_bottom: cropFixed(Math.min(top, 1 - height) + height),
+      });
+    }
+
+    function onPointerUp() {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+    }
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp, { once: true });
+  }
+
+  function resizeCrop(
+    corner: "top-left" | "top-right" | "bottom-left" | "bottom-right",
+    event: React.PointerEvent<HTMLButtonElement>,
+  ) {
+    event.stopPropagation();
+    const startCrop = crop;
+    event.currentTarget.setPointerCapture(event.pointerId);
+
+    function onPointerMove(moveEvent: PointerEvent) {
+      const frame = frameRef.current;
+      const rect = displayRect;
+      if (!frame || !rect) return;
+      const frameBounds = frame.getBoundingClientRect();
+      const nextX = clampCropValue(
+        (moveEvent.clientX - frameBounds.left - rect.left) / rect.width,
+      );
+      const nextY = clampCropValue(
+        (moveEvent.clientY - frameBounds.top - rect.top) / rect.height,
+      );
+      const minimum = 0.02;
+      const nextCrop = { ...startCrop };
+      if (corner.includes("left")) {
+        nextCrop.crop_left = Math.min(nextX, startCrop.crop_right - minimum);
+      }
+      if (corner.includes("right")) {
+        nextCrop.crop_right = Math.max(nextX, startCrop.crop_left + minimum);
+      }
+      if (corner.includes("top")) {
+        nextCrop.crop_top = Math.min(nextY, startCrop.crop_bottom - minimum);
+      }
+      if (corner.includes("bottom")) {
+        nextCrop.crop_bottom = Math.max(nextY, startCrop.crop_top + minimum);
+      }
+      setError(null);
+      setCrop({
+        crop_left: cropFixed(clampCropValue(nextCrop.crop_left)),
+        crop_top: cropFixed(clampCropValue(nextCrop.crop_top)),
+        crop_right: cropFixed(clampCropValue(nextCrop.crop_right)),
+        crop_bottom: cropFixed(clampCropValue(nextCrop.crop_bottom)),
+      });
+    }
+
+    function onPointerUp() {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+    }
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp, { once: true });
+  }
+
+  async function saveCrop() {
+    if (!cropIsValid) {
+      setError("Choose a larger crop area before saving.");
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    try {
+      const saved = await updatePreparedPageCrop(
+        documentId,
+        page.page_number,
+        composeCrop(baseCrop, crop),
+      );
+      setBaseCrop({
+        crop_left: saved.crop_left,
+        crop_top: saved.crop_top,
+        crop_right: saved.crop_right,
+        crop_bottom: saved.crop_bottom,
+      });
+      setCrop(fullCrop());
+      setEditing(false);
+      onPageCropped(saved);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Echo could not save the crop.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <li
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={`overflow-hidden rounded-2xl border bg-white ${isDragging ? "z-10 border-accent opacity-80" : "border-border"}`}
+    >
+      <div ref={frameRef} className="relative aspect-[3/4] overflow-hidden bg-[#eeece5]">
+        <Image
+          src={imageSrc}
+          alt={`Prepared preview of page ${page.page_number}`}
+          fill
+          unoptimized
+          className="object-contain"
+          onLoad={(event) => {
+            setImageSize({
+              width: event.currentTarget.naturalWidth,
+              height: event.currentTarget.naturalHeight,
+            });
+          }}
+        />
+        {editing && displayRect && (
+          <div
+            className="absolute bg-[#17202a66]"
+            style={{
+              left: displayRect.left,
+              top: displayRect.top,
+              width: displayRect.width,
+              height: displayRect.height,
+            }}
+          >
+            <div
+              role="group"
+              aria-label={`Crop area for page ${page.page_number}`}
+              onPointerDown={moveCrop}
+              className={`absolute touch-none cursor-move border-2 ${cropIsValid ? "border-white" : "border-[#d95043]"} bg-white/15 shadow-[0_0_0_9999px_rgba(23,32,42,0.35)]`}
+              style={{
+                left: `${cropPercent(crop.crop_left)}%`,
+                top: `${cropPercent(crop.crop_top)}%`,
+                width: `${cropPercent(cropWidth)}%`,
+                height: `${cropPercent(cropHeight)}%`,
+              }}
+            >
+              {(
+                [
+                  ["top-left", "top-0 left-0 -translate-x-1/2 -translate-y-1/2 cursor-nwse-resize"],
+                  ["top-right", "top-0 right-0 translate-x-1/2 -translate-y-1/2 cursor-nesw-resize"],
+                  ["bottom-left", "bottom-0 left-0 -translate-x-1/2 translate-y-1/2 cursor-nesw-resize"],
+                  ["bottom-right", "right-0 bottom-0 translate-x-1/2 translate-y-1/2 cursor-nwse-resize"],
+                ] as const
+              ).map(([corner, positionClass]) => (
+                <button
+                  key={corner}
+                  type="button"
+                  aria-label={`Resize ${corner} crop corner`}
+                  onPointerDown={(event) => resizeCrop(corner, event)}
+                  className={`absolute size-5 rounded-full border-2 border-white bg-accent shadow ${positionClass}`}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+      <div className="p-4 text-sm">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="font-semibold">Page {page.page_number}</p>
+            {page.original_filename ? (
+              <p className="mt-1 truncate text-muted" title={page.original_filename}>
+                {page.original_filename}
+              </p>
+            ) : (
+              <p className="mt-1 text-muted">PDF page requiring text reading</p>
+            )}
+          </div>
+          <button
+            type="button"
+            disabled={acting || saving}
+            onClick={() => {
+              setBaseCrop(cropFromPage(page));
+              setCrop(fullCrop());
+              setError(null);
+              setEditing((current) => !current);
+            }}
+            className="shrink-0 rounded-lg border border-border px-3 py-2 font-semibold hover:bg-[#f4f1e9] disabled:opacity-60"
+          >
+            {editing ? "Close" : "Crop"}
+          </button>
+        </div>
+
+        <div className="mt-4 grid grid-cols-[2.75rem_1fr_1fr] gap-2">
+          <button
+            type="button"
+            disabled={acting || saving}
+            className="inline-flex min-h-11 cursor-grab items-center justify-center rounded-lg border border-border hover:bg-[#f4f1e9] disabled:cursor-not-allowed disabled:opacity-60 active:cursor-grabbing"
+            aria-label={`Drag page ${page.page_number} to reorder`}
+            title="Drag to reorder"
+            {...attributes}
+            {...listeners}
+          >
+            <span aria-hidden="true" className="grid grid-cols-3 gap-1">
+              {Array.from({ length: 9 }, (_, index) => (
+                <span key={index} className="size-1 rounded-full bg-muted" />
+              ))}
+            </span>
+          </button>
+          <button
+            type="button"
+            disabled={acting || saving}
+            onClick={() => onRotate(page.page_number, "left")}
+            className="rounded-lg border border-border px-3 py-2 font-semibold hover:bg-[#f4f1e9] disabled:opacity-60"
+          >
+            Rotate left
+          </button>
+          <button
+            type="button"
+            disabled={acting || saving}
+            onClick={() => onRotate(page.page_number, "right")}
+            className="rounded-lg border border-border px-3 py-2 font-semibold hover:bg-[#f4f1e9] disabled:opacity-60"
+          >
+            Rotate right
+          </button>
+        </div>
+        <button
+          type="button"
+          disabled={acting || saving || pageCount <= 1}
+          onClick={() => onRemove(page.page_number)}
+          className="mt-2 w-full rounded-lg border border-[#d9b9b4] px-3 py-2 font-semibold text-[#783a33] hover:bg-[#fff3f1] disabled:opacity-60"
+        >
+          Remove page
+        </button>
+
+        {editing && (
+          <div className="mt-4 space-y-3">
+            <p className="text-muted">
+              Drag the box to move it. Drag a corner to resize it.
+            </p>
+            <div className="flex flex-wrap gap-2 pt-1">
+              <button
+                type="button"
+                disabled={saving || !cropIsValid}
+                onClick={() => void saveCrop()}
+                className="rounded-lg bg-accent px-4 py-2 font-semibold text-white hover:bg-accent-dark disabled:opacity-60"
+              >
+                {saving ? "Saving..." : "Save crop"}
+              </button>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => {
+                  setBaseCrop(fullCrop());
+                  setCrop(fullCrop());
+                  setError(null);
+                }}
+                className="rounded-lg border border-border px-4 py-2 font-semibold hover:bg-[#f4f1e9] disabled:opacity-60"
+              >
+                Reset
+              </button>
+            </div>
+            {error && (
+              <p role="alert" className="rounded-lg bg-[#fff3f1] p-3 text-[#783a33]">
+                {error}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    </li>
+  );
+}
+
 export function DocumentProcessing({ documentId }: { documentId: string }) {
   const { session } = useAuthSession();
   const accessToken = session?.access_token ?? null;
@@ -83,6 +532,16 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
   const [audioProgress, setAudioProgress] = useState({ completed: 0, total: 0 });
   const [editingPageNumber, setEditingPageNumber] = useState<number | null>(null);
   const [editingText, setEditingText] = useState("");
+  const [reviewImageVersion, setReviewImageVersion] = useState(0);
+  const [imageVersionsByPage, setImageVersionsByPage] = useState<Record<string, number>>(
+    {},
+  );
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
   const embeddedTextStartRequestedRef = useRef(false);
   const documentLoadedRef = useRef(false);
   const audioProgressFailureCountRef = useRef(0);
@@ -272,6 +731,109 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
       setActing(false);
     }
   }, [documentId, editingPageNumber, editingText]);
+
+  const rotatePage = useCallback(
+    async (pageNumber: number, direction: "left" | "right") => {
+      setActing(true);
+      setError(null);
+      try {
+        const nextDocument = await rotatePreparedPage(documentId, pageNumber, direction);
+        setDocument(nextDocument);
+        setImageVersionsByPage((current) => ({
+          ...current,
+          [String(pageNumber)]: (current[String(pageNumber)] ?? 0) + 1,
+        }));
+      } catch (caught) {
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : `Echo could not rotate page ${pageNumber}.`,
+        );
+      } finally {
+        setActing(false);
+      }
+    },
+    [documentId],
+  );
+
+  const handleReviewDragEnd = useCallback(
+    async (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!document || !over || active.id === over.id) return;
+      const orderedPages = [...document.pages].sort(
+        (left, right) => left.page_number - right.page_number,
+      );
+      const oldIndex = orderedPages.findIndex((page) => page.id === active.id);
+      const newIndex = orderedPages.findIndex((page) => page.id === over.id);
+      if (oldIndex < 0 || newIndex < 0) return;
+      const nextPages = arrayMove(orderedPages, oldIndex, newIndex);
+
+      setActing(true);
+      setError(null);
+      try {
+        const nextDocument = await reorderPreparedPages(
+          documentId,
+          nextPages.map((page) => page.id),
+        );
+        setDocument(nextDocument);
+        setReviewImageVersion((current) => current + 1);
+      } catch (caught) {
+        setError(
+          caught instanceof Error ? caught.message : "Echo could not rearrange these pages.",
+        );
+      } finally {
+        setActing(false);
+      }
+    },
+    [document, documentId],
+  );
+
+  const removePage = useCallback(
+    async (pageNumber: number) => {
+      if (!window.confirm(`Remove page ${pageNumber} from this upload?`)) return;
+      setActing(true);
+      setError(null);
+      try {
+        const nextDocument = await removePreparedPage(documentId, pageNumber);
+        setDocument(nextDocument);
+        setReviewImageVersion((current) => current + 1);
+        setImageVersionsByPage({});
+      } catch (caught) {
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : `Echo could not remove page ${pageNumber}.`,
+        );
+      } finally {
+        setActing(false);
+      }
+    },
+    [documentId],
+  );
+
+  const applySavedCrop = useCallback((saved: PageCropResult) => {
+    setDocument((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        pages: current.pages.map((page) =>
+          page.id === saved.page_id
+            ? {
+                ...page,
+                crop_left: saved.crop_left,
+                crop_top: saved.crop_top,
+                crop_right: saved.crop_right,
+                crop_bottom: saved.crop_bottom,
+              }
+            : page,
+        ),
+      };
+    });
+    setImageVersionsByPage((current) => ({
+      ...current,
+      [String(saved.page_number)]: (current[String(saved.page_number)] ?? 0) + 1,
+    }));
+  }, []);
 
   if (loading) {
     return <p className="mt-10 text-lg text-muted">Loading your document...</p>;
@@ -484,46 +1046,45 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
         <section className="mt-7 rounded-3xl border border-border bg-surface p-6 sm:p-8">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <h2 className="text-2xl font-semibold">Preview pages before OCR</h2>
+              <h2 className="text-2xl font-semibold">Review pages before text reading</h2>
               <p className="mt-2 max-w-2xl text-muted">
-                These are the prepared page images Echo will read. Check that rotation,
-                crop, and page order look right before starting OCR.
+                Check page order, rotation, and crop before Echo reads the page text.
               </p>
             </div>
             <p className="text-sm font-semibold text-muted">{ocrPages.length} pages</p>
           </div>
-          <ol className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {ocrPages.map((page) => (
-              <li
-                key={page.id}
-                className="overflow-hidden rounded-2xl border border-border bg-white"
-              >
-                <div className="relative aspect-[3/4] bg-[#eeece5]">
-                  <Image
-                    src={preparedPageImageUrl(
-                      document.id,
-                      page.page_number,
-                      accessToken,
-                    )}
-                    alt={`Prepared preview of page ${page.page_number}`}
-                    fill
-                    unoptimized
-                    className="object-contain"
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={(event) => void handleReviewDragEnd(event)}
+          >
+            <SortableContext
+              items={ocrPages.map((page) => page.id)}
+              strategy={rectSortingStrategy}
+            >
+              <ol className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {ocrPages.map((page) => (
+                  <PreparedPageReviewCard
+                    key={page.id}
+                    documentId={document.id}
+                    page={page}
+                    pageCount={ocrPages.length}
+                    imageVersion={
+                      reviewImageVersion +
+                      (imageVersionsByPage[String(page.page_number)] ?? 0)
+                    }
+                    acting={acting}
+                    accessToken={accessToken}
+                    onRotate={(pageNumber, direction) =>
+                      void rotatePage(pageNumber, direction)
+                    }
+                    onRemove={(pageNumber) => void removePage(pageNumber)}
+                    onPageCropped={applySavedCrop}
                   />
-                </div>
-                <div className="p-4 text-sm">
-                  <p className="font-semibold">Page {page.page_number}</p>
-                  {page.original_filename ? (
-                    <p className="mt-1 truncate text-muted" title={page.original_filename}>
-                      {page.original_filename}
-                    </p>
-                  ) : (
-                    <p className="mt-1 text-muted">PDF page requiring OCR</p>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ol>
+                ))}
+              </ol>
+            </SortableContext>
+          </DndContext>
         </section>
       )}
 

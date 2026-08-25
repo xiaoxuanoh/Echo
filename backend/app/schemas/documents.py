@@ -121,6 +121,14 @@ class PageCropResult(BaseModel):
     processed_image_path: str
 
 
+class PageRotateRequest(BaseModel):
+    direction: Literal["left", "right"]
+
+
+class PageReorderRequest(BaseModel):
+    page_ids: list[UUID] = Field(min_length=1)
+
+
 class DocumentPageDetailResult(BaseModel):
     id: UUID
     page_number: int
@@ -132,6 +140,7 @@ class DocumentPageDetailResult(BaseModel):
     crop_top: float | None
     crop_right: float | None
     crop_bottom: float | None
+    rotation_degrees: Literal[0, 90, 180, 270]
     processing_status: DocumentPageProcessingStatus
     error_message: str | None
     warning_messages: list[str] = Field(default_factory=list)
