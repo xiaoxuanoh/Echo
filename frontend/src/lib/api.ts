@@ -252,6 +252,50 @@ export async function updatePreparedPageCrop(
   );
 }
 
+export async function rotatePreparedPage(
+  documentId: string,
+  pageNumber: number,
+  direction: "left" | "right",
+): Promise<DocumentDetail> {
+  return parseResponse<DocumentDetail>(
+    await echoFetch(
+      `${API_BASE_URL}/api/books/${documentId}/pages/${pageNumber}/rotation`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ direction }),
+      },
+    ),
+    `Echo could not rotate page ${pageNumber}.`,
+  );
+}
+
+export async function reorderPreparedPages(
+  documentId: string,
+  pageIds: string[],
+): Promise<DocumentDetail> {
+  return parseResponse<DocumentDetail>(
+    await echoFetch(`${API_BASE_URL}/api/books/${documentId}/pages/order`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ page_ids: pageIds }),
+    }),
+    "Echo could not rearrange these pages.",
+  );
+}
+
+export async function removePreparedPage(
+  documentId: string,
+  pageNumber: number,
+): Promise<DocumentDetail> {
+  return parseResponse<DocumentDetail>(
+    await echoFetch(`${API_BASE_URL}/api/books/${documentId}/pages/${pageNumber}`, {
+      method: "DELETE",
+    }),
+    `Echo could not remove page ${pageNumber}.`,
+  );
+}
+
 type UploadOptions = {
   libraryDocumentId?: string;
   targetLanguage?: ListeningLanguage;
