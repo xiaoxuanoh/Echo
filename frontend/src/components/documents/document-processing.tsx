@@ -500,7 +500,6 @@ function PreparedPageReviewCard({
                 type="button"
                 disabled={saving}
                 onClick={() => {
-                  setBaseCrop(fullCrop());
                   setCrop(fullCrop());
                   setError(null);
                 }}
