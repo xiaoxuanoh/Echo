@@ -157,6 +157,7 @@ class SupabaseDocumentMetadataService:
             prefer="resolution=merge-duplicates,return=minimal",
             expect_json=False,
         )
+        self._delete_related_rows("document_pages", document.id)
         if document.pages:
             self._request_json(
                 "POST",

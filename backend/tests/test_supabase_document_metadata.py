@@ -49,16 +49,20 @@ def test_supabase_metadata_save_writes_document_page_and_audio_rows(
 
     assert [request.get_method() for request in requests] == [
         "POST",
+        "DELETE",
         "POST",
         "POST",
     ]
     document_payload = json.loads(requests[0].data.decode("utf-8"))[0]
-    page_payload = json.loads(requests[1].data.decode("utf-8"))[0]
-    segment_payload = json.loads(requests[2].data.decode("utf-8"))[0]
+    page_payload = json.loads(requests[2].data.decode("utf-8"))[0]
+    segment_payload = json.loads(requests[3].data.decode("utf-8"))[0]
     assert document_payload["id"] == str(DOCUMENT_ID)
     assert document_payload["user_id"] == str(USER_ID)
-    assert "on_conflict=id" in requests[1].full_url
+    assert requests[1].full_url.endswith(
+        f"/rest/v1/document_pages?document_id=eq.{DOCUMENT_ID}",
+    )
     assert "on_conflict=id" in requests[2].full_url
+    assert "on_conflict=id" in requests[3].full_url
     assert page_payload["crop_left"] == 0.1
     assert page_payload["crop_top"] == 0.2
     assert page_payload["crop_right"] == 0.9
@@ -68,6 +72,30 @@ def test_supabase_metadata_save_writes_document_page_and_audio_rows(
         "text before generating audio."
     ]
     assert segment_payload["audio_storage_path"] == "audio/segment-0001.mp3"
+
+
+def test_supabase_metadata_save_removes_stale_page_rows_when_none_remain(
+    monkeypatch,
+) -> None:
+    requests = []
+
+    def fake_urlopen(request, timeout):
+        requests.append(request)
+        return FakeResponse()
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    service = SupabaseDocumentMetadataService(
+        supabase_url="https://example.supabase.co",
+        service_role_key="secret",
+    )
+    document = _document_record().model_copy(update={"pages": [], "audio_segments": []})
+
+    service.save(Path(str(DOCUMENT_ID)), document)
+
+    assert [request.get_method() for request in requests] == ["POST", "DELETE"]
+    assert requests[1].full_url.endswith(
+        f"/rest/v1/document_pages?document_id=eq.{DOCUMENT_ID}",
+    )
 
 
 def test_supabase_metadata_load_rebuilds_document_record(monkeypatch) -> None:
