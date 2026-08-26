@@ -157,7 +157,7 @@ class SupabaseDocumentMetadataService:
             prefer="resolution=merge-duplicates,return=minimal",
             expect_json=False,
         )
-        self._delete_related_rows("document_pages", document.id)
+        self._delete_stale_page_rows(document)
         if document.pages:
             self._request_json(
                 "POST",
@@ -216,6 +216,22 @@ class SupabaseDocumentMetadataService:
             "DELETE",
             table,
             query={"document_id": f"eq.{document_id}"},
+            expect_json=False,
+        )
+
+    def _delete_stale_page_rows(self, document: DocumentRecord) -> None:
+        if not document.pages:
+            self._delete_related_rows("document_pages", document.id)
+            return
+
+        current_page_ids = ",".join(str(page.id) for page in document.pages)
+        self._request_json(
+            "DELETE",
+            "document_pages",
+            query={
+                "document_id": f"eq.{document.id}",
+                "id": f"not.in.({current_page_ids})",
+            },
             expect_json=False,
         )
 
