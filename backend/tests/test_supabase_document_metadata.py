@@ -58,9 +58,10 @@ def test_supabase_metadata_save_writes_document_page_and_audio_rows(
     segment_payload = json.loads(requests[3].data.decode("utf-8"))[0]
     assert document_payload["id"] == str(DOCUMENT_ID)
     assert document_payload["user_id"] == str(USER_ID)
-    assert requests[1].full_url.endswith(
-        f"/rest/v1/document_pages?document_id=eq.{DOCUMENT_ID}",
-    )
+    assert "document_id=eq." in requests[1].full_url
+    assert str(DOCUMENT_ID) in requests[1].full_url
+    assert "id=not.in." in requests[1].full_url
+    assert str(PAGE_ID) in requests[1].full_url
     assert "on_conflict=id" in requests[2].full_url
     assert "on_conflict=id" in requests[3].full_url
     assert page_payload["crop_left"] == 0.1
@@ -96,6 +97,29 @@ def test_supabase_metadata_save_removes_stale_page_rows_when_none_remain(
     assert requests[1].full_url.endswith(
         f"/rest/v1/document_pages?document_id=eq.{DOCUMENT_ID}",
     )
+
+
+def test_supabase_metadata_save_keeps_current_page_rows_for_audio_segments(
+    monkeypatch,
+) -> None:
+    requests = []
+
+    def fake_urlopen(request, timeout):
+        requests.append(request)
+        return FakeResponse()
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    service = SupabaseDocumentMetadataService(
+        supabase_url="https://example.supabase.co",
+        service_role_key="secret",
+    )
+
+    service.save(Path(str(DOCUMENT_ID)), _document_record())
+
+    page_delete = requests[1]
+    assert page_delete.get_method() == "DELETE"
+    assert "id=not.in." in page_delete.full_url
+    assert str(PAGE_ID) in page_delete.full_url
 
 
 def test_supabase_metadata_load_rebuilds_document_record(monkeypatch) -> None:
