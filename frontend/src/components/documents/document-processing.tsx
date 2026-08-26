@@ -120,8 +120,12 @@ function cropFixed(value: number): number {
   return Number(value.toFixed(4));
 }
 
-function versionedImageUrl(url: string, version: number): string {
+function versionedImageUrl(url: string, version: number | string): string {
   return `${url}${url.includes("?") ? "&" : "?"}v=${version}`;
+}
+
+function pageImageVersion(page: DocumentPageDetail, localVersion: number): string {
+  return encodeURIComponent(`${page.updated_at}-${localVersion}`);
 }
 
 function PreparedPageReviewCard({
@@ -138,7 +142,7 @@ function PreparedPageReviewCard({
   documentId: string;
   page: DocumentPageDetail;
   pageCount: number;
-  imageVersion: number;
+  imageVersion: string;
   acting: boolean;
   accessToken: string | null;
   onRotate: (pageNumber: number, direction: "left" | "right") => void;
@@ -1061,8 +1065,11 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
                     page={page}
                     pageCount={ocrPages.length}
                     imageVersion={
-                      reviewImageVersion +
-                      (imageVersionsByPage[String(page.page_number)] ?? 0)
+                      pageImageVersion(
+                        page,
+                        reviewImageVersion +
+                          (imageVersionsByPage[String(page.page_number)] ?? 0),
+                      )
                     }
                     acting={acting}
                     accessToken={accessToken}

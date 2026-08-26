@@ -126,7 +126,7 @@ describe("document text preparation", () => {
     expect(await screen.findByText("Review pages before text reading")).toBeVisible();
     expect(screen.getByAltText("Prepared preview of page 1")).toHaveAttribute(
       "src",
-      "http://localhost:8001/api/books/document-id/pages/1/image?v=0",
+      "http://localhost:8001/api/books/document-id/pages/1/image?v=2026-07-22T00%3A00%3A00Z-0",
     );
     expect(screen.getByRole("button", { name: "Rotate left" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Rotate right" })).toBeVisible();

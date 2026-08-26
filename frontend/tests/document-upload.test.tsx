@@ -14,6 +14,19 @@ describe("page photo workflow", () => {
       configurable: true,
       value: vi.fn(),
     });
+    vi.stubGlobal(
+      "Image",
+      class {
+        naturalWidth = 1200;
+        naturalHeight = 1600;
+        onload: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+
+        set src(_value: string) {
+          queueMicrotask(() => this.onload?.());
+        }
+      },
+    );
   });
 
   afterEach(() => {
