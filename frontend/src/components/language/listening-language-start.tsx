@@ -24,13 +24,13 @@ export function ListeningLanguageStart() {
           href="/profile"
           className="inline-flex min-h-14 items-center justify-center rounded-xl bg-accent px-7 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-accent-dark"
         >
-          {isLoadingSession ? "Checking account..." : "Sign in to view your library"}
+          {isLoadingSession ? "Checking upload access..." : "Sign in to upload"}
         </Link>
         <Link
           href="/profile"
           className="inline-flex min-h-14 items-center justify-center rounded-xl border border-border bg-surface px-7 py-3 text-base font-semibold text-foreground transition hover:bg-[#f8f6f0]"
         >
-          {isLoadingSession ? "Checking upload access..." : "Sign in to upload"}
+          {isLoadingSession ? "Checking account..." : "Sign in to view your library"}
         </Link>
       </div>
     );
@@ -63,16 +63,16 @@ export function ListeningLanguageStart() {
 
       <div className="mt-7 flex flex-wrap gap-3">
         <Link
-          href="/books"
+          href={uploadHref}
           className="inline-flex min-h-14 items-center justify-center rounded-xl bg-accent px-7 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-accent-dark"
         >
-          Go to library
+          Start uploading
         </Link>
         <Link
-          href={uploadHref}
+          href="/books"
           className="inline-flex min-h-14 items-center justify-center rounded-xl border border-border bg-surface px-7 py-3 text-base font-semibold text-foreground transition hover:bg-[#f8f6f0]"
         >
-          Start uploading
+          Go to library
         </Link>
       </div>
     </div>

@@ -21,6 +21,11 @@ describe("listening language start", () => {
 
     render(<ListeningLanguageStart />);
 
+    const signedOutLinks = screen.getAllByRole("link");
+    expect(signedOutLinks.map((link) => link.textContent)).toEqual([
+      "Sign in to upload",
+      "Sign in to view your library",
+    ]);
     expect(
       screen.getByRole("link", { name: "Sign in to view your library" }),
     ).toHaveAttribute("href", "/profile");
@@ -67,6 +72,11 @@ describe("listening language start", () => {
       "aria-pressed",
       "true",
     );
+    const signedInLinks = screen.getAllByRole("link");
+    expect(signedInLinks.map((link) => link.textContent)).toEqual([
+      "Start uploading",
+      "Go to library",
+    ]);
     expect(await screen.findByRole("link", { name: "Go to library" })).toHaveAttribute(
       "href",
       "/books",
