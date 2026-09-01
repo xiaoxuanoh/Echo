@@ -10,7 +10,7 @@ export default function ProfilePage() {
           </p>
           <h1 className="mt-2 text-4xl font-semibold">Profile</h1>
           <p className="mt-3 max-w-2xl leading-7 text-muted">
-            Manage your Echo account before cloud document sync is turned on.
+            Manage your Echo account and saved document access.
           </p>
         </header>
 

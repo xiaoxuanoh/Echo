@@ -393,10 +393,12 @@ export function AuthPanel() {
                 </dd>
               </div>
               <div>
-                <dt className="text-sm font-semibold text-muted">Library sync</dt>
-                <dd className="mt-1 text-lg font-semibold">Ready for cloud sync</dd>
+                <dt className="text-sm font-semibold text-muted">Library access</dt>
+                <dd className="mt-1 text-lg font-semibold">
+                  Ready for saved documents
+                </dd>
                 <dd className="mt-1 leading-7 text-muted">
-                  Cloud sync will start in the next persistence step.
+                  Use your account to open your library and continue document work.
                 </dd>
               </div>
             </dl>
@@ -434,8 +436,8 @@ export function AuthPanel() {
                 </div>
                 <h2 className="mt-6 text-2xl font-semibold">Sign in</h2>
                 <p className="mt-3 max-w-xl leading-7 text-muted">
-                  Sign in now so Echo can connect your documents and progress to
-                  your account when cloud sync is enabled.
+                  Sign in so Echo can keep your documents and listening progress
+                  connected to your account.
                 </p>
               </div>
 

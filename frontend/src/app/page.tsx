@@ -24,9 +24,17 @@ export default function Home() {
         >
           <ol className="space-y-7">
             {[
-              ["1", "Upload your document", "Choose one PDF or several page photos."],
-              ["2", "Arrange your pages", "Check the order and rotate photos if needed."],
-              ["3", "Ready for the next step", "Echo prepares a clean page-by-page result."],
+              ["1", "Upload pages", "Add a PDF or page photos."],
+              [
+                "2",
+                "Review the page order",
+                "Rotate, crop, and arrange pages before processing.",
+              ],
+              [
+                "3",
+                "Listen to generated audio",
+                "Echo reads the prepared pages and creates audio for listening.",
+              ],
             ].map(([number, title, copy]) => (
               <li className="flex gap-5" key={number}>
                 <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#e4edf2] font-semibold text-accent">

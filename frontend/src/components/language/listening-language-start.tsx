@@ -16,10 +16,25 @@ export function ListeningLanguageStart() {
     defaultListeningLanguage,
   );
   const uploadHref = useMemo(() => `/books/new?language=${language}`, [language]);
-  const libraryHref = isSignedIn ? "/books" : "/profile";
-  const libraryLabel = isSignedIn ? "Go to library" : "Sign in to view your library";
-  const uploadActionHref = isSignedIn ? uploadHref : "/profile";
-  const uploadLabel = isSignedIn ? "Start uploading" : "Sign in to upload";
+
+  if (!isSignedIn) {
+    return (
+      <div className="mt-9 flex flex-wrap gap-3">
+        <Link
+          href="/profile"
+          className="inline-flex min-h-14 items-center justify-center rounded-xl bg-accent px-7 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-accent-dark"
+        >
+          {isLoadingSession ? "Checking account..." : "Sign in to view your library"}
+        </Link>
+        <Link
+          href="/profile"
+          className="inline-flex min-h-14 items-center justify-center rounded-xl border border-border bg-surface px-7 py-3 text-base font-semibold text-foreground transition hover:bg-[#f8f6f0]"
+        >
+          {isLoadingSession ? "Checking upload access..." : "Sign in to upload"}
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="mt-9">
@@ -48,16 +63,16 @@ export function ListeningLanguageStart() {
 
       <div className="mt-7 flex flex-wrap gap-3">
         <Link
-          href={libraryHref}
+          href="/books"
           className="inline-flex min-h-14 items-center justify-center rounded-xl bg-accent px-7 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-accent-dark"
         >
-          {isLoadingSession ? "Checking account..." : libraryLabel}
+          Go to library
         </Link>
         <Link
-          href={uploadActionHref}
+          href={uploadHref}
           className="inline-flex min-h-14 items-center justify-center rounded-xl border border-border bg-surface px-7 py-3 text-base font-semibold text-foreground transition hover:bg-[#f8f6f0]"
         >
-          {isLoadingSession ? "Checking upload access..." : uploadLabel}
+          Start uploading
         </Link>
       </div>
     </div>

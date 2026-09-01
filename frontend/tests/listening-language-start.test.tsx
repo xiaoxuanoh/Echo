@@ -31,6 +31,10 @@ describe("listening language start", () => {
     expect(
       screen.queryByRole("link", { name: "Go to library" }),
     ).not.toBeInTheDocument();
+    expect(screen.queryByText("Cantonese")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Hello. Choose how you'd like to listen today."),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps the library and upload actions for signed-in users", async () => {
@@ -56,6 +60,13 @@ describe("listening language start", () => {
 
     render(<ListeningLanguageStart />);
 
+    expect(
+      await screen.findByText("Hello. Choose how you'd like to listen today."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cantonese" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     expect(await screen.findByRole("link", { name: "Go to library" })).toHaveAttribute(
       "href",
       "/books",

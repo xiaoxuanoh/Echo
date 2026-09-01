@@ -90,7 +90,7 @@ describe("auth panel", () => {
     expect(screen.getByText("Email address")).toBeInTheDocument();
     expect(screen.getByText("reader@example.com")).toBeInTheDocument();
     expect(screen.getByText("Name not set yet")).toBeInTheDocument();
-    expect(screen.getByText("Ready for cloud sync")).toBeInTheDocument();
+    expect(screen.getByText("Ready for saved documents")).toBeInTheDocument();
     expect(screen.getByText("Technical details")).toBeInTheDocument();
   });
 

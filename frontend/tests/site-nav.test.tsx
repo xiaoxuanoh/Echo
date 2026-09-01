@@ -22,7 +22,7 @@ describe("site navigation", () => {
     vi.clearAllMocks();
   });
 
-  it("links to the main sections", () => {
+  it("links to the main sections for signed-out users", () => {
     usePathnameMock.mockReturnValue("/");
     getSupabaseBrowserClientMock.mockReturnValue(null);
 
@@ -34,11 +34,12 @@ describe("site navigation", () => {
       "href",
       "/books",
     );
-    expect(screen.getByRole("link", { name: "Profile" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute(
       "href",
       "/profile",
     );
-    expect(screen.getByLabelText("Signed out")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Profile" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Signed out")).not.toBeInTheDocument();
   });
 
   it("marks document pages as part of the library section", () => {
@@ -83,5 +84,10 @@ describe("site navigation", () => {
       "href",
       "/books",
     );
+    expect(screen.getByRole("link", { name: "Profile" })).toHaveAttribute(
+      "href",
+      "/profile",
+    );
+    expect(screen.queryByRole("link", { name: "Sign in" })).not.toBeInTheDocument();
   });
 });
