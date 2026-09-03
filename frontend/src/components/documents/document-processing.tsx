@@ -23,6 +23,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { useAuthSession } from "@/components/auth/use-auth-session";
+import { profileHrefForNext } from "@/lib/auth-redirect";
 import {
   deleteDocumentRecording,
   getDocument,
@@ -528,7 +529,7 @@ function PreparedPageReviewCard({
 }
 
 export function DocumentProcessing({ documentId }: { documentId: string }) {
-  const { session } = useAuthSession();
+  const { isConfigured, isLoadingSession, session } = useAuthSession();
   const accessToken = session?.access_token ?? null;
   const router = useRouter();
   const [document, setDocument] = useState<DocumentDetail | null>(null);
@@ -551,8 +552,11 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
   const embeddedTextStartRequestedRef = useRef(false);
   const documentLoadedRef = useRef(false);
   const audioProgressFailureCountRef = useRef(0);
+  const requiresSignIn = isConfigured && !isLoadingSession && !session;
+  const canFetchDocument = !isConfigured || Boolean(session);
 
   const refresh = useCallback(async () => {
+    if (!canFetchDocument) return;
     try {
       const nextDocument = await getDocument(documentId);
       documentLoadedRef.current = true;
@@ -570,12 +574,13 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
     } finally {
       setLoading(false);
     }
-  }, [documentId]);
+  }, [canFetchDocument, documentId]);
 
   useEffect(() => {
+    if (isLoadingSession || !canFetchDocument) return;
     const timer = window.setTimeout(() => void refresh(), 0);
     return () => window.clearTimeout(timer);
-  }, [refresh]);
+  }, [canFetchDocument, isLoadingSession, refresh]);
 
   useEffect(() => {
     if (
@@ -840,6 +845,27 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
       [String(saved.page_number)]: (current[String(saved.page_number)] ?? 0) + 1,
     }));
   }, []);
+
+  if (isLoadingSession) {
+    return <p className="mt-10 text-lg text-muted">Loading your document...</p>;
+  }
+
+  if (requiresSignIn) {
+    return (
+      <div className="mt-10 rounded-2xl border border-border bg-surface p-5">
+        <h1 className="text-2xl font-semibold">Sign in to review this upload</h1>
+        <p className="mt-2 text-muted">
+          Echo will bring you back to this document after you sign in.
+        </p>
+        <Link
+          href={profileHrefForNext(`/books/${documentId}`)}
+          className="mt-4 inline-flex min-h-11 items-center rounded-lg bg-accent px-4 font-semibold text-white hover:bg-accent-dark"
+        >
+          Sign in
+        </Link>
+      </div>
+    );
+  }
 
   if (loading) {
     return <p className="mt-10 text-lg text-muted">Loading your document...</p>;

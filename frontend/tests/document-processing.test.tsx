@@ -4,11 +4,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DocumentProcessing } from "@/components/documents/document-processing";
 
 const pushMock = vi.hoisted(() => vi.fn());
+const authSessionMock = vi.hoisted(() => vi.fn());
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
     push: pushMock,
   }),
+}));
+
+vi.mock("@/components/auth/use-auth-session", () => ({
+  useAuthSession: () => authSessionMock(),
 }));
 
 const uploadedDocument = {
@@ -85,6 +90,15 @@ function jsonResponse(body: object, status = 200) {
 describe("document text preparation", () => {
   beforeEach(() => {
     pushMock.mockReset();
+    authSessionMock.mockReturnValue({
+      isConfigured: false,
+      isLoadingSession: false,
+      isSignedIn: false,
+      authEvent: null,
+      session: null,
+      setSession: vi.fn(),
+      supabase: null,
+    });
     vi.stubGlobal("fetch", vi.fn());
   });
 
@@ -92,6 +106,28 @@ describe("document text preparation", () => {
     cleanup();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+  });
+
+  it("asks signed-out users to sign in before fetching a protected document", () => {
+    authSessionMock.mockReturnValue({
+      isConfigured: true,
+      isLoadingSession: false,
+      isSignedIn: false,
+      authEvent: null,
+      session: null,
+      setSession: vi.fn(),
+      supabase: {},
+    });
+
+    render(<DocumentProcessing documentId="document-id" />);
+
+    expect(screen.getByRole("heading", { name: "Sign in to review this upload" })).toBeVisible();
+    expect(screen.getByText("Echo will bring you back to this document after you sign in.")).toBeVisible();
+    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute(
+      "href",
+      "/profile?next=%2Fbooks%2Fdocument-id",
+    );
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("previews prepared OCR pages before text preparation starts", async () => {

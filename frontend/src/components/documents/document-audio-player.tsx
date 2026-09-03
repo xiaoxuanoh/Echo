@@ -11,6 +11,7 @@ import {
   renameDocumentRecording,
 } from "@/lib/api";
 import { useAuthSession } from "@/components/auth/use-auth-session";
+import { profileHrefForNext } from "@/lib/auth-redirect";
 import type { AudioSegment, DocumentAudio, DocumentProcessingStatus } from "@/types/documents";
 
 
@@ -62,7 +63,7 @@ function uploadMoreHref(documentAudio: DocumentAudio): string {
 }
 
 export function DocumentAudioPlayer({ documentId }: { documentId: string }) {
-  const { session } = useAuthSession();
+  const { isConfigured, isLoadingSession, session } = useAuthSession();
   const accessToken = session?.access_token ?? null;
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const progressRestoredRef = useRef(false);
@@ -76,6 +77,8 @@ export function DocumentAudioPlayer({ documentId }: { documentId: string }) {
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const requiresSignIn = isConfigured && !isLoadingSession && !session;
+  const canFetchDocument = !isConfigured || Boolean(session);
 
   const segments = useMemo(
     () => completedSegments(documentAudio?.segments ?? []),
@@ -84,6 +87,7 @@ export function DocumentAudioPlayer({ documentId }: { documentId: string }) {
   const currentSegment = segments[currentIndex] ?? null;
 
   const refresh = useCallback(async () => {
+    if (!canFetchDocument) return;
     try {
       const nextDocumentAudio = await getDocumentAudio(documentId);
       setDocumentAudio(nextDocumentAudio);
@@ -116,12 +120,13 @@ export function DocumentAudioPlayer({ documentId }: { documentId: string }) {
     } finally {
       setLoading(false);
     }
-  }, [documentId]);
+  }, [canFetchDocument, documentId]);
 
   useEffect(() => {
+    if (isLoadingSession || !canFetchDocument) return;
     const timer = window.setTimeout(() => void refresh(), 0);
     return () => window.clearTimeout(timer);
-  }, [refresh]);
+  }, [canFetchDocument, isLoadingSession, refresh]);
 
   useEffect(() => {
     if (
@@ -200,6 +205,27 @@ export function DocumentAudioPlayer({ documentId }: { documentId: string }) {
     setCompleted(false);
     setCurrentIndex(0);
     setPendingSeek(0);
+  }
+
+  if (isLoadingSession) {
+    return <p className="mt-10 text-lg text-muted">Loading the listening page…</p>;
+  }
+
+  if (requiresSignIn) {
+    return (
+      <div className="mt-10 rounded-2xl border border-border bg-surface p-5">
+        <h1 className="text-2xl font-semibold">Sign in to listen</h1>
+        <p className="mt-2 text-muted">
+          Echo will bring you back to this listening page after you sign in.
+        </p>
+        <Link
+          href={profileHrefForNext(`/books/${documentId}/listen`)}
+          className="mt-4 inline-flex min-h-11 items-center rounded-lg bg-accent px-4 font-semibold text-white hover:bg-accent-dark"
+        >
+          Sign in
+        </Link>
+      </div>
+    );
   }
 
   if (loading) {

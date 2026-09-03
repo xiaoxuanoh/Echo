@@ -4,6 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DocumentAudioPlayer } from "@/components/documents/document-audio-player";
 
 
+const authSessionMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@/components/auth/use-auth-session", () => ({
+  useAuthSession: () => authSessionMock(),
+}));
+
 const textReadyAudio = {
   book_id: "document-id",
   library_book_id: "folder-id",
@@ -68,6 +74,15 @@ function installLocalStorageStub() {
 
 describe("document audio player", () => {
   beforeEach(() => {
+    authSessionMock.mockReturnValue({
+      isConfigured: false,
+      isLoadingSession: false,
+      isSignedIn: false,
+      authEvent: null,
+      session: null,
+      setSession: vi.fn(),
+      supabase: null,
+    });
     vi.stubGlobal("fetch", vi.fn());
     installLocalStorageStub();
     window.localStorage.clear();
@@ -78,6 +93,32 @@ describe("document audio player", () => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
     window.localStorage.clear();
+  });
+
+  it("asks signed-out users to sign in before fetching protected listening data", () => {
+    authSessionMock.mockReturnValue({
+      isConfigured: true,
+      isLoadingSession: false,
+      isSignedIn: false,
+      authEvent: null,
+      session: null,
+      setSession: vi.fn(),
+      supabase: {},
+    });
+
+    render(<DocumentAudioPlayer documentId="document-id" />);
+
+    expect(screen.getByRole("heading", { name: "Sign in to listen" })).toBeVisible();
+    expect(
+      screen.getByText(
+        "Echo will bring you back to this listening page after you sign in.",
+      ),
+    ).toBeVisible();
+    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute(
+      "href",
+      "/profile?next=%2Fbooks%2Fdocument-id%2Flisten",
+    );
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("starts mock audio creation from a text-ready document", async () => {
