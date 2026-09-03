@@ -109,7 +109,8 @@ describe("auth panel", () => {
     expect(screen.getByText("reader@example.com")).toBeInTheDocument();
     expect(screen.getByText("Name not set yet")).toBeInTheDocument();
     expect(screen.getByText("Ready for saved documents")).toBeInTheDocument();
-    expect(screen.getByText("Technical details")).toBeInTheDocument();
+    expect(screen.queryByText("Technical details")).not.toBeInTheDocument();
+    expect(screen.queryByText("User ID")).not.toBeInTheDocument();
   });
 
   it("returns to a safe internal destination after signing in", async () => {
@@ -242,8 +243,9 @@ describe("auth panel", () => {
     expect(screen.getByText("Email address")).toBeInTheDocument();
     expect(screen.getByText("reader@example.com")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument();
-    expect(screen.getByText("Technical details")).toBeInTheDocument();
-    expect(screen.getByText("Account provider")).toBeInTheDocument();
+    expect(screen.queryByText("Technical details")).not.toBeInTheDocument();
+    expect(screen.queryByText("Account provider")).not.toBeInTheDocument();
+    expect(screen.queryByText("User ID")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("heading", { name: "Sign in" }),
     ).not.toBeInTheDocument();

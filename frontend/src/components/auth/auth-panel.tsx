@@ -432,21 +432,6 @@ export function AuthPanel() {
               </div>
             </dl>
 
-            <details className="mt-5 rounded-xl border border-border bg-background px-4 py-3 text-sm text-muted">
-              <summary className="cursor-pointer font-semibold text-foreground">
-                Technical details
-              </summary>
-              <dl className="mt-3 grid gap-3 sm:grid-cols-2">
-                <div>
-                  <dt className="font-semibold">Account provider</dt>
-                  <dd className="mt-1">Supabase Auth</dd>
-                </div>
-                <div>
-                  <dt className="font-semibold">User ID</dt>
-                  <dd className="mt-1 break-all font-mono">{session.user.id}</dd>
-                </div>
-              </dl>
-            </details>
           </div>
         ) : (
           <>
