@@ -394,4 +394,46 @@ describe("page photo workflow", () => {
       title: "Echo test",
     });
   });
+
+  it("skips the upload destination modal when adding to an existing library folder", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          book_id: "new-recording-id",
+          source_type: "pdf",
+          target_language: "cantonese",
+          tts_voice: "zh-HK-HiuMaanNeural",
+          total_pages: 1,
+          original_filename: "chapter.pdf",
+          classification: "text",
+          pages: [],
+          processing_status: "uploaded",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    render(
+      <DocumentUpload
+        libraryDocumentId="existing-folder-id"
+        libraryDocumentTitle="Echo test"
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Choose PDF"), {
+      target: { files: [new File(["pdf"], "chapter.pdf", { type: "application/pdf" })] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Prepare your upload" }));
+
+    expect(await screen.findByRole("link", { name: "Review upload" })).toHaveAttribute(
+      "href",
+      "/books/new-recording-id",
+    );
+    expect(screen.queryByText("Where should we save this upload?")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][1]?.body).toBeInstanceOf(FormData);
+    expect((fetchMock.mock.calls[0][1]?.body as FormData).get("library_book_id")).toBe(
+      "existing-folder-id",
+    );
+  });
 });
