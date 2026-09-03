@@ -48,7 +48,7 @@ describe("library auth gate", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Sign in to view your library" }),
-    ).toHaveAttribute("href", "/profile");
+    ).toHaveAttribute("href", "/profile?next=%2Fbooks");
     expect(screen.queryByText("Library ready")).not.toBeInTheDocument();
   });
 

@@ -4,6 +4,7 @@ import Link from "next/link";
 
 import { useAuthSession } from "@/components/auth/use-auth-session";
 import { DocumentLibrary } from "@/components/documents/document-library";
+import { profileHrefForNext } from "@/lib/auth-redirect";
 
 export function LibraryAuthGate() {
   const { isConfigured, isLoadingSession, isSignedIn } = useAuthSession();
@@ -53,7 +54,7 @@ export function LibraryAuthGate() {
           </p>
           <Link
             className="mt-6 inline-flex min-h-12 items-center justify-center rounded-xl bg-accent px-5 font-semibold text-white shadow-sm transition hover:bg-accent-dark hover:shadow-[0_10px_24px_rgba(48,101,134,0.22)]"
-            href="/profile"
+            href={profileHrefForNext("/books")}
           >
             Sign in to view your library
           </Link>

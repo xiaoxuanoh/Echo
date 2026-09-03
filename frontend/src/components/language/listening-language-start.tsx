@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { useAuthSession } from "@/components/auth/use-auth-session";
+import { profileHrefForNext } from "@/lib/auth-redirect";
 import {
   defaultListeningLanguage,
   listeningLanguages,
@@ -21,13 +22,13 @@ export function ListeningLanguageStart() {
     return (
       <div className="mt-9 flex flex-wrap gap-3">
         <Link
-          href="/profile"
+          href={profileHrefForNext("/books/new")}
           className="inline-flex min-h-14 items-center justify-center rounded-xl bg-accent px-7 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-accent-dark"
         >
           {isLoadingSession ? "Checking upload access..." : "Sign in to upload"}
         </Link>
         <Link
-          href="/profile"
+          href={profileHrefForNext("/books")}
           className="inline-flex min-h-14 items-center justify-center rounded-xl border border-border bg-surface px-7 py-3 text-base font-semibold text-foreground transition hover:bg-[#f8f6f0]"
         >
           {isLoadingSession ? "Checking account..." : "Sign in to view your library"}

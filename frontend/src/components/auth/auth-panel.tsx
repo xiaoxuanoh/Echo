@@ -1,9 +1,11 @@
 "use client";
 
 import type { Session } from "@supabase/supabase-js";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { useAuthSession } from "@/components/auth/use-auth-session";
+import { profileHrefForNext, safeNextPath } from "@/lib/auth-redirect";
 
 type CreateAccountStep = "email" | "password" | "name";
 type SignInStep = "email" | "password";
@@ -19,6 +21,9 @@ function getDisplayName(session: Session) {
 export function AuthPanel() {
   const { authEvent, isLoadingSession, session, setSession, supabase } =
     useAuthSession();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const nextPath = safeNextPath(searchParams.get("next"));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [signInStep, setSignInStep] = useState<SignInStep>("email");
   const [email, setEmail] = useState("");
@@ -110,6 +115,10 @@ export function AuthPanel() {
     setPassword("");
     setSignInStep("email");
     setSession(data.session);
+    if (data.session && nextPath) {
+      router.replace(nextPath);
+      return;
+    }
     setMessage("You are signed in.");
   }
 
@@ -206,14 +215,20 @@ export function AuthPanel() {
     setPasswordResetEmail(null);
 
     const displayName = createDisplayName.trim();
+    const emailRedirectTo =
+      nextPath && typeof window !== "undefined"
+        ? `${window.location.origin}${profileHrefForNext(nextPath)}`
+        : undefined;
+    const signUpOptions = {
+      data: {
+        display_name: displayName,
+      },
+      ...(emailRedirectTo ? { emailRedirectTo } : {}),
+    };
     const { data, error: authError } = await supabase.auth.signUp({
       email: createEmail.trim(),
       password: createPassword,
-      options: {
-        data: {
-          display_name: displayName,
-        },
-      },
+      options: signUpOptions,
     });
 
     setIsSubmitting(false);
@@ -230,6 +245,10 @@ export function AuthPanel() {
     setSession(data.session);
 
     if (data.session) {
+      if (nextPath) {
+        router.replace(nextPath);
+        return;
+      }
       setMessage("Your account is ready.");
       return;
     }
@@ -269,6 +288,16 @@ export function AuthPanel() {
   const displayName = session ? getDisplayName(session) : null;
   const isPasswordRecovery =
     authEvent === "PASSWORD_RECOVERY" && !passwordRecoveryComplete;
+  const shouldRedirectExistingSession =
+    Boolean(session && nextPath) && authEvent !== "PASSWORD_RECOVERY";
+
+  useEffect(() => {
+    if (!shouldRedirectExistingSession || !nextPath) {
+      return;
+    }
+
+    router.replace(nextPath);
+  }, [nextPath, router, shouldRedirectExistingSession]);
 
   if (!supabase) {
     return (

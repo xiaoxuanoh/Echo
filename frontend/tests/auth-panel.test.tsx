@@ -6,10 +6,23 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AuthPanel } from "@/components/auth/auth-panel";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
+
+const navigationMock = vi.hoisted(() => ({
+  replace: vi.fn(),
+  next: null as string | null,
+}));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    replace: navigationMock.replace,
+  }),
+  useSearchParams: () =>
+    new URLSearchParams(navigationMock.next ? { next: navigationMock.next } : {}),
+}));
 
 vi.mock("@/lib/supabase/browser", () => ({
   getSupabaseBrowserClient: vi.fn(),
@@ -18,6 +31,11 @@ vi.mock("@/lib/supabase/browser", () => ({
 const getSupabaseBrowserClientMock = vi.mocked(getSupabaseBrowserClient);
 
 describe("auth panel", () => {
+  beforeEach(() => {
+    navigationMock.next = null;
+    navigationMock.replace.mockReset();
+  });
+
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
@@ -92,6 +110,98 @@ describe("auth panel", () => {
     expect(screen.getByText("Name not set yet")).toBeInTheDocument();
     expect(screen.getByText("Ready for saved documents")).toBeInTheDocument();
     expect(screen.getByText("Technical details")).toBeInTheDocument();
+  });
+
+  it("returns to a safe internal destination after signing in", async () => {
+    navigationMock.next = "/books/new?language=mandarin";
+    const signInWithPassword = vi.fn().mockResolvedValue({
+      data: {
+        session: {
+          user: {
+            email: "reader@example.com",
+            id: "user-id",
+          },
+        },
+      },
+      error: null,
+    });
+    const unsubscribe = vi.fn();
+
+    getSupabaseBrowserClientMock.mockReturnValue({
+      auth: {
+        getSession: vi.fn().mockResolvedValue({ data: { session: null } }),
+        onAuthStateChange: vi.fn().mockReturnValue({
+          data: { subscription: { unsubscribe } },
+        }),
+        signInWithPassword,
+        resetPasswordForEmail: vi.fn(),
+        signOut: vi.fn(),
+        signUp: vi.fn(),
+        updateUser: vi.fn(),
+      },
+    } as unknown as ReturnType<typeof getSupabaseBrowserClient>);
+
+    render(<AuthPanel />);
+
+    fireEvent.change(screen.getByLabelText("Email"), {
+      target: { value: "reader@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    fireEvent.change(await screen.findByLabelText("Password"), {
+      target: { value: "correct-password" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    await waitFor(() => {
+      expect(navigationMock.replace).toHaveBeenCalledWith(
+        "/books/new?language=mandarin",
+      );
+    });
+    expect(screen.queryByText("You are signed in.")).not.toBeInTheDocument();
+  });
+
+  it("ignores an unsafe next destination after signing in", async () => {
+    navigationMock.next = "https://example.com/books";
+    const signInWithPassword = vi.fn().mockResolvedValue({
+      data: {
+        session: {
+          user: {
+            email: "reader@example.com",
+            id: "user-id",
+          },
+        },
+      },
+      error: null,
+    });
+    const unsubscribe = vi.fn();
+
+    getSupabaseBrowserClientMock.mockReturnValue({
+      auth: {
+        getSession: vi.fn().mockResolvedValue({ data: { session: null } }),
+        onAuthStateChange: vi.fn().mockReturnValue({
+          data: { subscription: { unsubscribe } },
+        }),
+        signInWithPassword,
+        resetPasswordForEmail: vi.fn(),
+        signOut: vi.fn(),
+        signUp: vi.fn(),
+        updateUser: vi.fn(),
+      },
+    } as unknown as ReturnType<typeof getSupabaseBrowserClient>);
+
+    render(<AuthPanel />);
+
+    fireEvent.change(screen.getByLabelText("Email"), {
+      target: { value: "reader@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    fireEvent.change(await screen.findByLabelText("Password"), {
+      target: { value: "correct-password" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    expect(await screen.findByText("You are signed in.")).toBeInTheDocument();
+    expect(navigationMock.replace).not.toHaveBeenCalled();
   });
 
   it("shows user information instead of the sign-in form when already signed in", async () => {
@@ -209,6 +319,132 @@ describe("auth panel", () => {
     expect(screen.queryByText("User information")).not.toBeInTheDocument();
   });
 
+  it("preserves a safe next destination in the account confirmation redirect", async () => {
+    navigationMock.next = "/books/new?language=english";
+    const signUp = vi.fn().mockResolvedValue({
+      data: {
+        session: null,
+      },
+      error: null,
+    });
+    const unsubscribe = vi.fn();
+
+    getSupabaseBrowserClientMock.mockReturnValue({
+      auth: {
+        getSession: vi.fn().mockResolvedValue({ data: { session: null } }),
+        onAuthStateChange: vi.fn().mockReturnValue({
+          data: { subscription: { unsubscribe } },
+        }),
+        signInWithPassword: vi.fn(),
+        resetPasswordForEmail: vi.fn(),
+        signOut: vi.fn(),
+        signUp,
+        updateUser: vi.fn(),
+      },
+    } as unknown as ReturnType<typeof getSupabaseBrowserClient>);
+
+    render(<AuthPanel />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+    let dialog = screen.getByRole("dialog", { name: "What is your email?" });
+    fireEvent.change(within(dialog).getByLabelText("Email"), {
+      target: { value: "new-reader@example.com" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Continue" }));
+
+    dialog = screen.getByRole("dialog", { name: "Create a password" });
+    fireEvent.change(within(dialog).getByLabelText("Password"), {
+      target: { value: "correct-password" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Confirm password"), {
+      target: { value: "correct-password" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Continue" }));
+
+    dialog = screen.getByRole("dialog", { name: "What should Echo call you?" });
+    fireEvent.change(within(dialog).getByLabelText("Name"), {
+      target: { value: "New Reader" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create account" }));
+
+    await waitFor(() => {
+      expect(signUp).toHaveBeenCalledWith({
+        email: "new-reader@example.com",
+        password: "correct-password",
+        options: {
+          data: {
+            display_name: "New Reader",
+          },
+          emailRedirectTo:
+            "http://localhost:3000/profile?next=%2Fbooks%2Fnew%3Flanguage%3Denglish",
+        },
+      });
+    });
+    expect(
+      await screen.findByText(/We sent a confirmation link to/),
+    ).toBeInTheDocument();
+    expect(navigationMock.replace).not.toHaveBeenCalled();
+  });
+
+  it("returns to a safe internal destination after immediate account creation", async () => {
+    navigationMock.next = "/books";
+    const signUp = vi.fn().mockResolvedValue({
+      data: {
+        session: {
+          user: {
+            email: "new-reader@example.com",
+            id: "user-id",
+          },
+        },
+      },
+      error: null,
+    });
+    const unsubscribe = vi.fn();
+
+    getSupabaseBrowserClientMock.mockReturnValue({
+      auth: {
+        getSession: vi.fn().mockResolvedValue({ data: { session: null } }),
+        onAuthStateChange: vi.fn().mockReturnValue({
+          data: { subscription: { unsubscribe } },
+        }),
+        signInWithPassword: vi.fn(),
+        resetPasswordForEmail: vi.fn(),
+        signOut: vi.fn(),
+        signUp,
+        updateUser: vi.fn(),
+      },
+    } as unknown as ReturnType<typeof getSupabaseBrowserClient>);
+
+    render(<AuthPanel />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+    let dialog = screen.getByRole("dialog", { name: "What is your email?" });
+    fireEvent.change(within(dialog).getByLabelText("Email"), {
+      target: { value: "new-reader@example.com" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Continue" }));
+
+    dialog = screen.getByRole("dialog", { name: "Create a password" });
+    fireEvent.change(within(dialog).getByLabelText("Password"), {
+      target: { value: "correct-password" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Confirm password"), {
+      target: { value: "correct-password" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Continue" }));
+
+    dialog = screen.getByRole("dialog", { name: "What should Echo call you?" });
+    fireEvent.change(within(dialog).getByLabelText("Name"), {
+      target: { value: "New Reader" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create account" }));
+
+    await waitFor(() => {
+      expect(navigationMock.replace).toHaveBeenCalledWith("/books");
+    });
+    expect(screen.queryByText("Your account is ready.")).not.toBeInTheDocument();
+  });
+
   it("sends a password reset email from the password step", async () => {
     const resetPasswordForEmail = vi.fn().mockResolvedValue({
       data: {},
@@ -250,6 +486,7 @@ describe("auth panel", () => {
   });
 
   it("lets users choose a new password after a recovery link", async () => {
+    navigationMock.next = "/books";
     const updateUser = vi.fn().mockResolvedValue({
       data: {
         user: {
@@ -304,5 +541,6 @@ describe("auth panel", () => {
       });
     });
     expect(await screen.findByText("Your password has been updated.")).toBeInTheDocument();
+    expect(navigationMock.replace).not.toHaveBeenCalled();
   });
 });

@@ -4,12 +4,26 @@ import Link from "next/link";
 
 import { useAuthSession } from "@/components/auth/use-auth-session";
 import { DocumentUpload } from "@/components/upload/document-upload";
+import { profileHrefForNext } from "@/lib/auth-redirect";
 
 type UploadAuthGateProps = {
   initialLanguage?: string;
   libraryDocumentId?: string;
   libraryDocumentTitle?: string;
 };
+
+function uploadNextPath({
+  initialLanguage,
+  libraryDocumentId,
+  libraryDocumentTitle,
+}: UploadAuthGateProps): string {
+  const params = new URLSearchParams();
+  if (initialLanguage) params.set("language", initialLanguage);
+  if (libraryDocumentId) params.set("folderId", libraryDocumentId);
+  if (libraryDocumentTitle) params.set("folderTitle", libraryDocumentTitle);
+  const query = params.toString();
+  return query ? `/books/new?${query}` : "/books/new";
+}
 
 export function UploadAuthGate({
   initialLanguage,
@@ -68,7 +82,13 @@ export function UploadAuthGate({
           </p>
           <Link
             className="mt-6 inline-flex min-h-12 items-center justify-center rounded-xl bg-accent px-5 font-semibold text-white shadow-sm transition hover:bg-accent-dark hover:shadow-[0_10px_24px_rgba(48,101,134,0.22)]"
-            href="/profile"
+            href={profileHrefForNext(
+              uploadNextPath({
+                initialLanguage,
+                libraryDocumentId,
+                libraryDocumentTitle,
+              }),
+            )}
           >
             Sign in to start uploading
           </Link>

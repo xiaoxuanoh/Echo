@@ -46,8 +46,36 @@ describe("upload auth gate", () => {
     expect(await screen.findByText("Sign in to upload files")).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Sign in to start uploading" }),
-    ).toHaveAttribute("href", "/profile");
+    ).toHaveAttribute("href", "/profile?next=%2Fbooks%2Fnew");
     expect(screen.queryByText("Upload form ready")).not.toBeInTheDocument();
+  });
+
+  it("preserves upload query parameters in the sign-in destination", async () => {
+    const unsubscribe = vi.fn();
+
+    getSupabaseBrowserClientMock.mockReturnValue({
+      auth: {
+        getSession: vi.fn().mockResolvedValue({ data: { session: null } }),
+        onAuthStateChange: vi.fn().mockReturnValue({
+          data: { subscription: { unsubscribe } },
+        }),
+      },
+    } as unknown as ReturnType<typeof getSupabaseBrowserClient>);
+
+    render(
+      <UploadAuthGate
+        initialLanguage="mandarin"
+        libraryDocumentId="folder-id"
+        libraryDocumentTitle="Ready upload"
+      />,
+    );
+
+    expect(
+      await screen.findByRole("link", { name: "Sign in to start uploading" }),
+    ).toHaveAttribute(
+      "href",
+      "/profile?next=%2Fbooks%2Fnew%3Flanguage%3Dmandarin%26folderId%3Dfolder-id%26folderTitle%3DReady%2Bupload",
+    );
   });
 
   it("shows the upload form when the user is signed in", async () => {

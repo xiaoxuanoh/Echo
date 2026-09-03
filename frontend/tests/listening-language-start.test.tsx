@@ -28,10 +28,10 @@ describe("listening language start", () => {
     ]);
     expect(
       screen.getByRole("link", { name: "Sign in to view your library" }),
-    ).toHaveAttribute("href", "/profile");
+    ).toHaveAttribute("href", "/profile?next=%2Fbooks");
     expect(screen.getByRole("link", { name: "Sign in to upload" })).toHaveAttribute(
       "href",
-      "/profile",
+      "/profile?next=%2Fbooks%2Fnew",
     );
     expect(
       screen.queryByRole("link", { name: "Go to library" }),
