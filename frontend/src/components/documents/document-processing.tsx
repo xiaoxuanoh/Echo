@@ -907,7 +907,19 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
     canResumeFailedAudio;
   const canStartAudio =
     document.processing_status === "text_ready" || canResumeAudio;
-  const listenNowDisabled = acting || !canStartAudio;
+  const canStartText = isAwaitingOcrReview || canResumeText;
+  const primaryActionLabel = canStartAudio
+    ? canResumeAudio
+      ? "Resume audio preparation"
+      : "Create listening audio"
+    : canStartText
+      ? isAwaitingOcrReview
+        ? "Start reading page text"
+        : "Resume reading pages"
+      : "Reading page text";
+  const primaryActionDisabled = acting || (!canStartAudio && !canStartText);
+  const primaryActionDescriptionId =
+    isPreparingText && !canStartText ? "audio-action-waiting" : undefined;
   const audioPercent =
     audioProgress.total > 0
       ? Math.round((audioProgress.completed / audioProgress.total) * 100)
@@ -959,12 +971,12 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
             ) : (
               <button
                 type="button"
-                disabled={listenNowDisabled}
-                onClick={() => void startAudio()}
+                disabled={primaryActionDisabled}
+                onClick={() => void (canStartText ? startTextPreparation() : startAudio())}
                 className="min-h-12 rounded-xl bg-accent px-6 py-3 font-semibold text-white shadow-sm transition-colors duration-150 hover:bg-accent-dark disabled:cursor-not-allowed disabled:border disabled:border-border disabled:bg-[#edf1f0] disabled:text-muted disabled:shadow-none"
-                aria-describedby={isPreparingText ? "listen-now-waiting" : undefined}
+                aria-describedby={primaryActionDescriptionId}
               >
-                Listen now
+                {acting ? "Starting..." : primaryActionLabel}
               </button>
             )}
           </div>
@@ -983,8 +995,8 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
         </div>
 
         {isPreparingText && (
-          <p id="listen-now-waiting" className="mt-4 text-sm text-muted" aria-live="polite">
-            Echo is reading your pages first. Listen now will unlock when the text is ready.
+          <p id="audio-action-waiting" className="mt-4 text-sm text-muted" aria-live="polite">
+            Echo is reading your pages first. Audio creation will be available when the text is ready.
           </p>
         )}
         {isAwaitingOcrReview && (
@@ -1027,7 +1039,7 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
         )}
         {document.processing_status === "text_ready" && (
           <div className="mt-4 rounded-xl border border-[#a9c5b3] bg-[#f4faf5] p-4 text-[#376247]">
-            <p>All page text is prepared. Select Listen now to create listening audio.</p>
+            <p>All page text is prepared. Select Create listening audio to continue.</p>
           </div>
         )}
         {canResumeAudio && (

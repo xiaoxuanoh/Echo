@@ -170,17 +170,17 @@ describe("document text preparation", () => {
     expect(screen.getByRole("button", { name: "Drag page 1 to reorder" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Remove page" })).toBeDisabled();
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByRole("button", { name: "Start reading page text" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Start reading page text" })[0]);
 
     await waitFor(() => expect(fetchMock.mock.calls[1][0]).toContain("/process-text"));
     expect(
       await screen.findByText(
-        "All page text is prepared. Select Listen now to create listening audio.",
+        "All page text is prepared. Select Create listening audio to continue.",
       ),
     ).toBeVisible();
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Listen now" }),
+      screen.getByRole("button", { name: "Create listening audio" }),
     );
 
     expect(await screen.findByText("Listening audio is ready.")).toBeVisible();
@@ -376,7 +376,7 @@ describe("document text preparation", () => {
 
     render(<DocumentProcessing documentId="document-id" />);
     fireEvent.click(
-      await screen.findByRole("button", { name: "Listen now" }),
+      await screen.findByRole("button", { name: "Create listening audio" }),
     );
 
     expect(await screen.findByText("Listening audio is ready.")).toBeVisible();
@@ -389,7 +389,7 @@ describe("document text preparation", () => {
     expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: "POST" });
   });
 
-  it("keeps listen now disabled while OCR is active", async () => {
+  it("keeps audio creation unavailable while OCR is active", async () => {
     const processingDocument = {
       ...uploadedDocument,
       processing_status: "running_ocr",
@@ -399,10 +399,10 @@ describe("document text preparation", () => {
 
     render(<DocumentProcessing documentId="document-id" />);
 
-    expect(await screen.findByRole("button", { name: "Listen now" })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: "Reading page text" })).toBeDisabled();
     expect(
       screen.getByText(
-        "Echo is reading your pages first. Listen now will unlock when the text is ready.",
+        "Echo is reading your pages first. Audio creation will be available when the text is ready.",
       ),
     ).toBeVisible();
   });
@@ -487,7 +487,7 @@ describe("document text preparation", () => {
 
     expect(
       await screen.findByText(
-        "All page text is prepared. Select Listen now to create listening audio.",
+        "All page text is prepared. Select Create listening audio to continue.",
       ),
     ).toBeVisible();
     expect(fetchMock.mock.calls[1][0]).toContain("/pages/1/text");
@@ -504,10 +504,7 @@ describe("document text preparation", () => {
 
     render(<DocumentProcessing documentId="document-id" />);
 
-    expect(
-      await screen.findByRole("button", { name: "Listen now" }),
-    ).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Resume reading pages" })).toBeVisible();
+    expect(await screen.findAllByRole("button", { name: "Resume reading pages" })).toHaveLength(2);
     expect(
       screen.getByText(
         "Preparation appears to have stopped. Resume reading from the first unfinished page.",
@@ -540,10 +537,11 @@ describe("document text preparation", () => {
 
     render(<DocumentProcessing documentId="document-id" />);
 
-    expect(
-      await screen.findByRole("button", { name: "Resume audio preparation" }),
-    ).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "Resume audio preparation" }));
+    const resumeAudioButtons = await screen.findAllByRole("button", {
+      name: "Resume audio preparation",
+    });
+    expect(resumeAudioButtons).toHaveLength(2);
+    fireEvent.click(resumeAudioButtons[0]);
 
     expect(await screen.findByText("Listening audio is ready.")).toBeVisible();
     expect(fetchMock.mock.calls[1][0]).toContain("/prepare-audio");
