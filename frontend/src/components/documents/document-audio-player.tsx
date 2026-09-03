@@ -12,6 +12,7 @@ import {
 } from "@/lib/api";
 import { useAuthSession } from "@/components/auth/use-auth-session";
 import { profileHrefForNext } from "@/lib/auth-redirect";
+import { listeningLanguageLabel } from "@/lib/listening-languages";
 import type { AudioSegment, DocumentAudio, DocumentProcessingStatus } from "@/types/documents";
 
 
@@ -258,6 +259,7 @@ export function DocumentAudioPlayer({ documentId }: { documentId: string }) {
     canResumeAudio;
   const title = listeningTitle(documentAudio);
   const showUploadContext = title !== documentAudio.title;
+  const targetLanguageLabel = listeningLanguageLabel(documentAudio.target_language);
 
   return (
     <div className="mt-3">
@@ -278,6 +280,11 @@ export function DocumentAudioPlayer({ documentId }: { documentId: string }) {
                 ? `${segments.length} audio part${segments.length === 1 ? "" : "s"} ready`
                 : "No listening audio yet"}
             </p>
+            {targetLanguageLabel && (
+              <p className="mt-1 text-sm text-muted">
+                Listening language: {targetLanguageLabel}
+              </p>
+            )}
           </div>
           <div className="flex flex-col items-stretch gap-3 sm:min-w-60 sm:items-stretch">
             {canStart && (

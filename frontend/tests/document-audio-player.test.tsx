@@ -143,6 +143,7 @@ describe("document audio player", () => {
     );
 
     expect(await screen.findByText("2 audio parts ready")).toBeVisible();
+    expect(screen.getByText("Listening language: Cantonese")).toBeVisible();
     expect(screen.getByText("Page 1")).toBeVisible();
     expect(screen.getByRole("heading", { name: "Part 1" })).toBeVisible();
     expect(fetchMock.mock.calls[1][0]).toContain("/prepare-audio");

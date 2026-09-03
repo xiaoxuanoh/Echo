@@ -24,6 +24,7 @@ import { useRouter } from "next/navigation";
 
 import { useAuthSession } from "@/components/auth/use-auth-session";
 import { profileHrefForNext } from "@/lib/auth-redirect";
+import { listeningLanguageLabel } from "@/lib/listening-languages";
 import {
   deleteDocumentRecording,
   getDocument,
@@ -938,6 +939,7 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
     document.processing_status === "generating_audio"
       ? `${audioProgress.completed} of ${audioProgress.total || "…"} audio parts ready`
       : `${document.completed_pages} of ${document.total_pages} pages ready`;
+  const targetLanguageLabel = listeningLanguageLabel(document.target_language);
 
   return (
     <div className="mt-3">
@@ -951,6 +953,11 @@ export function DocumentProcessing({ documentId }: { documentId: string }) {
               {document.title}
             </h1>
             <p className="mt-1 text-muted">{progressLabel}</p>
+            {targetLanguageLabel && (
+              <p className="mt-1 text-sm text-muted">
+                Listening language: {targetLanguageLabel}
+              </p>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <button

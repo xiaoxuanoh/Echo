@@ -160,6 +160,7 @@ describe("document text preparation", () => {
     render(<DocumentProcessing documentId="document-id" />);
 
     expect(await screen.findByText("Review pages before text reading")).toBeVisible();
+    expect(screen.getByText("Listening language: Cantonese")).toBeVisible();
     expect(screen.getByAltText("Prepared preview of page 1")).toHaveAttribute(
       "src",
       "http://localhost:8001/api/books/document-id/pages/1/image?v=2026-07-22T00%3A00%3A00Z-0",
