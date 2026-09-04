@@ -303,7 +303,7 @@ export function DocumentAudioPlayer({ documentId }: { documentId: string }) {
             )}
             <Link
               href={uploadMoreHref(documentAudio)}
-              className="inline-flex min-h-12 items-center justify-center rounded-xl bg-accent px-6 py-3 font-semibold text-white shadow-sm hover:bg-accent-dark"
+              className="inline-flex min-h-12 items-center justify-center rounded-xl border border-border bg-white px-6 py-3 font-semibold text-foreground shadow-sm hover:bg-[#f8f6f0]"
             >
               Upload more
             </Link>
